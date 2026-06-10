@@ -1,4 +1,4 @@
-# CLAUDE.md — Frontend (Yggdrasil Web)
+# CLAUDE.md — Web (Yggdrasil Web)
 
 > Canonical agent guide for this repo. `AGENTS.md` is a thin pointer to this
 > file. This repo is a **git submodule** of the Yggdrasil meta repo.
@@ -15,11 +15,11 @@
 
 The daily user surface for Yggdrasil. Users create projects, write feature specs,
 monitor agent runs live, review test reports, and chat with or steer the agent
-mid-run. Holds **no** source-of-truth state — everything comes from the Backend.
+mid-run. Holds **no** source-of-truth state — everything comes from the API.
 
-- **Role in Yggdrasil:** Frontend
+- **Role in Yggdrasil:** Web
 - **Stack:** React / Next.js (planned), desktop-first responsive
-- **Talks to:** Backend REST (commands/queries), Backend WebSocket (live run events). Never talks to the Forge directly.
+- **Talks to:** API REST (commands/queries), API WebSocket (live run events). Never talks to the Orchestrator directly.
 
 ## Suite-wide context (up-links to the meta repo)
 
@@ -28,7 +28,7 @@ mid-run. Holds **no** source-of-truth state — everything comes from the Backen
 - Product & scope: `../docs/overview/product.md`
 - Architecture / data flow: `../docs/overview/architecture.md`
 - Glossary: `../docs/overview/glossary.md`
-- This component's bridge page: `../docs/components/frontend.md`
+- This component's bridge page: `../docs/components/web.md`
 - Roadmap & open questions: `../docs/roadmap/`
 
 ## Routing table (this repo)
