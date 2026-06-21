@@ -59,13 +59,13 @@ export function AppSidebar({
         open ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
       )}
     >
-      <div className="flex items-center justify-between border-b border-rime-soft px-4 py-5">
+      <div className="relative flex items-center justify-center border-b border-rime-soft px-4 py-5">
         <YggdrasilLogo />
         {onClose && (
           <Button
             variant="ghost"
             size="icon"
-            className="lg:hidden"
+            className="absolute right-2 lg:hidden"
             onClick={onClose}
             aria-label="Close navigation menu"
           >
