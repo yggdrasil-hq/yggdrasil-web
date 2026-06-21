@@ -35,6 +35,7 @@ mid-run. Holds **no** source-of-truth state — everything comes from the API.
 
 | If your task is about…        | Read                          |
 |-------------------------------|-------------------------------|
+| Authentication / login UI / middleware | Meta: `../docs/concepts/authentication.md` → `docs/concepts/authentication.md` |
 | Orientation / how it's built  | `docs/overview/architecture.md` |
 | Local dev / setup             | `docs/overview/setup.md`      |
 | Conventions specific to here  | `docs/conventions/`           |

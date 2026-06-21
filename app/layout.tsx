@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Cinzel, Space_Grotesk, JetBrains_Mono } from "next/font/google";
 import { HaloBackground } from "@/components/background/halo-background";
+import { AuthProvider } from "@/components/providers/auth-provider";
 import { MswProvider } from "@/components/providers/msw-provider";
 import "./globals.css";
 
@@ -53,7 +54,9 @@ export default function RootLayout({
       >
         <HaloBackground />
         <div className="relative z-10 min-h-screen">
-          <MswProvider>{children}</MswProvider>
+          <MswProvider>
+            <AuthProvider>{children}</AuthProvider>
+          </MswProvider>
         </div>
       </body>
     </html>

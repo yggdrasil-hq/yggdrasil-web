@@ -11,6 +11,7 @@ async function parseJson<T>(response: Response): Promise<T> {
 export async function fetchProject(projectId: string): Promise<Project> {
   const response = await fetch(apiUrl(`/projects/${projectId}`), {
     cache: "no-store",
+    credentials: "include",
   });
   return parseJson<Project>(response);
 }
@@ -18,6 +19,7 @@ export async function fetchProject(projectId: string): Promise<Project> {
 export async function fetchFeatures(projectId: string): Promise<Feature[]> {
   const response = await fetch(apiUrl(`/projects/${projectId}/features`), {
     cache: "no-store",
+    credentials: "include",
   });
   return parseJson<Feature[]>(response);
 }
@@ -28,6 +30,7 @@ export async function fetchFeature(
 ): Promise<Feature> {
   const response = await fetch(apiUrl(`/projects/${projectId}/features/${featureId}`), {
     cache: "no-store",
+    credentials: "include",
   });
   return parseJson<Feature>(response);
 }

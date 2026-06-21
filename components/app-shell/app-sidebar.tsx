@@ -1,18 +1,22 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   ChevronDown,
   FlaskConical,
   LayoutGrid,
+  LogOut,
   Settings,
-  User,
   X,
 } from "lucide-react";
+import { UserAvatar } from "@/components/auth/user-avatar";
+import { useAuth } from "@/components/providers/auth-provider";
 import { Button } from "@/components/ui/button";
 import { YggdrasilLogo } from "@/components/brand/yggdrasil-logo";
+import { logout } from "@/lib/auth/api";
 import type { Project } from "@/lib/features/types";
+import { appRoute } from "@/lib/config";
 import { cn } from "@/lib/utils";
 
 interface AppSidebarProps {
@@ -35,13 +39,9 @@ const navItems = [
     icon: FlaskConical,
     enabled: false,
   },
-  {
-    label: "Settings",
-    href: () => "#",
-    icon: Settings,
-    enabled: false,
-  },
 ] as const;
+
+const settingsHref = appRoute("/settings/account");
 
 export function AppSidebar({
   project,
@@ -50,6 +50,18 @@ export function AppSidebar({
   onNavigate,
 }: AppSidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
+  const { user, setUser } = useAuth();
+
+  const settingsActive =
+    pathname === settingsHref || pathname.startsWith(`${settingsHref}/`);
+
+  async function handleLogout() {
+    await logout();
+    setUser(null);
+    onNavigate?.();
+    router.push(appRoute("/login"));
+  }
 
   return (
     <aside
@@ -88,7 +100,9 @@ export function AppSidebar({
       <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
         {navItems.map((item) => {
           const href = item.href(project.id);
-          const active = item.enabled && pathname.startsWith(href);
+          const active =
+            item.enabled &&
+            (pathname === href || pathname.startsWith(`${href}/`));
           const Icon = item.icon;
 
           if (!item.enabled) {
@@ -125,16 +139,40 @@ export function AppSidebar({
         })}
       </nav>
 
-      <div className="border-t border-rime-soft px-3 py-4">
-        <div className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-mist">
-          <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-surface-03">
-            <User className="size-4" />
-          </div>
-          <div className="min-w-0">
-            <p className="truncate font-medium text-frost">Alex Morgan</p>
-            <p className="truncate text-xs text-shadow">alex@acme.dev</p>
-          </div>
+      <div className="border-t border-rime-soft px-3 py-3">
+        <div className="space-y-1">
+          <Link
+            href={settingsHref}
+            onClick={onNavigate}
+            className={cn(
+              "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
+              settingsActive
+                ? "bg-surface-03 text-frost"
+                : "text-mist hover:bg-surface-02 hover:text-frost",
+            )}
+          >
+            <Settings className="size-4 shrink-0" />
+            Settings
+          </Link>
+          <Button
+            variant="outline"
+            className="w-full justify-start gap-3 px-3"
+            onClick={() => void handleLogout()}
+          >
+            <LogOut className="size-4 shrink-0" />
+            Log out
+          </Button>
         </div>
+
+        {user ? (
+          <div className="mt-3 flex items-center gap-3 rounded-md px-3 py-2">
+            <UserAvatar username={user.username} className="size-8" />
+            <div className="min-w-0">
+              <p className="truncate font-medium text-frost">{user.displayName}</p>
+              <p className="truncate text-xs text-shadow">@{user.username}</p>
+            </div>
+          </div>
+        ) : null}
       </div>
     </aside>
   );
