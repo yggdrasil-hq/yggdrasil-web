@@ -1,0 +1,7 @@
+name: yggdrasil-web-test
+
+services:
+  test:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.test
