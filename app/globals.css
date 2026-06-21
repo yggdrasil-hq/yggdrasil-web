@@ -1,0 +1,49 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --niflheim: #080b11;
+    --surface-01: #0e131b;
+    --surface-02: #151c26;
+    --surface-03: #1c2531;
+    --rime: #2a3543;
+    --rime-soft: #1f2937;
+    --frost: #e8eef4;
+    --mist: #9fb0c0;
+    --shadow: #5e6e7e;
+    --bifrost: #2fd4c6;
+    --aurora: #4f9bf0;
+    --frostfire: #bfe9ee;
+
+    --background: 220 33% 4%;
+    --foreground: 210 33% 93%;
+    --card: 216 27% 8%;
+    --card-foreground: 210 33% 93%;
+    --popover: 216 27% 11%;
+    --popover-foreground: 210 33% 93%;
+    --primary: 174 66% 51%;
+    --primary-foreground: 220 33% 4%;
+    --secondary: 216 21% 17%;
+    --secondary-foreground: 210 33% 93%;
+    --muted: 216 21% 17%;
+    --muted-foreground: 213 16% 63%;
+    --accent: 213 21% 22%;
+    --accent-foreground: 210 33% 93%;
+    --destructive: 355 55% 54%;
+    --destructive-foreground: 210 33% 93%;
+    --border: 213 21% 22%;
+    --input: 213 21% 22%;
+    --ring: 174 66% 51%;
+    --radius: 0.875rem;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-niflheim text-foreground font-sans antialiased;
+  }
+}
