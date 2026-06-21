@@ -1,7 +1,6 @@
 import type { NextConfig } from "next";
 
 const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
-const mockProjectId = "proj_acme";
 
 const nextConfig: NextConfig = {
   basePath: basePath || undefined,
@@ -11,7 +10,7 @@ const nextConfig: NextConfig = {
     return [
       {
         source: "/",
-        destination: `/projects/${mockProjectId}/features`,
+        destination: "/projects",
         permanent: false,
       },
     ];

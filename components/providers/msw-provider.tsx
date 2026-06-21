@@ -4,12 +4,14 @@ import { useEffect, useState } from "react";
 import { appPath } from "@/lib/config";
 
 export function MswProvider({ children }: { children: React.ReactNode }) {
-  const [ready, setReady] = useState(
-    process.env.NODE_ENV !== "development",
-  );
+  const mswEnabled =
+    process.env.NODE_ENV === "development" &&
+    process.env.NEXT_PUBLIC_USE_MSW !== "false";
+
+  const [ready, setReady] = useState(!mswEnabled);
 
   useEffect(() => {
-    if (process.env.NODE_ENV !== "development") {
+    if (!mswEnabled) {
       return;
     }
 

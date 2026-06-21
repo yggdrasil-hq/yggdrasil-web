@@ -3,8 +3,10 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  Bell,
   ChevronDown,
   FlaskConical,
+  Home,
   LayoutGrid,
   LogOut,
   Settings,
@@ -28,20 +30,27 @@ interface AppSidebarProps {
 
 const navItems = [
   {
+    label: "Home",
+    href: (projectId: string) => `/projects/${projectId}`,
+    icon: Home,
+    enabled: true,
+  },
+  {
     label: "Features",
     href: (projectId: string) => `/projects/${projectId}/features`,
     icon: LayoutGrid,
     enabled: true,
   },
   {
-    label: "Test suites",
-    href: () => "#",
+    label: "Tests",
+    href: (projectId: string) => `/projects/${projectId}/tests`,
     icon: FlaskConical,
-    enabled: false,
+    enabled: true,
   },
 ] as const;
 
 const settingsHref = appRoute("/settings/account");
+const notificationsHref = appRoute("/notifications");
 
 export function AppSidebar({
   project,
@@ -55,6 +64,8 @@ export function AppSidebar({
 
   const settingsActive =
     pathname === settingsHref || pathname.startsWith(`${settingsHref}/`);
+  const notificationsActive =
+    pathname === notificationsHref || pathname.startsWith(`${notificationsHref}/`);
 
   async function handleLogout() {
     await logout();
@@ -90,19 +101,24 @@ export function AppSidebar({
         <Button
           variant="outline"
           className="w-full justify-between bg-surface-02 text-left font-medium text-frost"
-          disabled
+          asChild
         >
-          <span className="truncate">{project.name}</span>
-          <ChevronDown className="size-4 shrink-0 opacity-60" />
+          <Link href={appRoute("/projects")}>
+            <span className="truncate">{project.name}</span>
+            <ChevronDown className="size-4 shrink-0 opacity-60" />
+          </Link>
         </Button>
       </div>
 
       <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
         {navItems.map((item) => {
           const href = item.href(project.id);
+          const hrefPath = appRoute(href);
           const active =
             item.enabled &&
-            (pathname === href || pathname.startsWith(`${href}/`));
+            (item.label === "Home"
+              ? pathname === hrefPath
+              : pathname === hrefPath || pathname.startsWith(`${hrefPath}/`));
           const Icon = item.icon;
 
           if (!item.enabled) {
@@ -123,7 +139,7 @@ export function AppSidebar({
           return (
             <Link
               key={item.label}
-              href={href}
+              href={appRoute(href)}
               onClick={onNavigate}
               className={cn(
                 "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
@@ -137,6 +153,20 @@ export function AppSidebar({
             </Link>
           );
         })}
+
+        <Link
+          href={notificationsHref}
+          onClick={onNavigate}
+          className={cn(
+            "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
+            notificationsActive
+              ? "bg-surface-03 text-frost"
+              : "text-mist hover:bg-surface-02 hover:text-frost",
+          )}
+        >
+          <Bell className="size-4 shrink-0" />
+          Notifications
+        </Link>
       </nav>
 
       <div className="border-t border-rime-soft px-3 py-3">

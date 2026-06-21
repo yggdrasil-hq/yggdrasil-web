@@ -1,18 +1,21 @@
 "use client";
 
+import Link from "next/link";
 import { Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/app-shell/app-shell";
 import { FeatureList } from "@/components/features/feature-list";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { fetchFeatures, fetchProject } from "@/lib/api";
+import { createFeature, fetchFeatures, fetchProject } from "@/lib/api";
 import type { Feature, Project } from "@/lib/features/types";
+import { appRoute } from "@/lib/config";
 
 interface FeaturesPageClientProps {
   projectId: string;
@@ -22,6 +25,14 @@ export function FeaturesPageClient({ projectId }: FeaturesPageClientProps) {
   const [project, setProject] = useState<Project | null>(null);
   const [features, setFeatures] = useState<Feature[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
+  const [newTitle, setNewTitle] = useState("");
+
+  async function reloadFeatures() {
+    const featureData = await fetchFeatures(projectId);
+    setFeatures(featureData);
+  }
 
   useEffect(() => {
     let active = true;
@@ -52,7 +63,30 @@ export function FeaturesPageClient({ projectId }: FeaturesPageClientProps) {
     };
   }, [projectId]);
 
-  if (error) {
+  async function handleCreateFeature() {
+    const title = newTitle.trim();
+    if (!title) return;
+
+    setCreating(true);
+    setError(null);
+    try {
+      const feature = await createFeature(projectId, title);
+      setNewTitle("");
+      setShowCreate(false);
+      await reloadFeatures();
+      window.location.href = appRoute(
+        `/projects/${projectId}/features/${feature.id}`,
+      );
+    } catch (createError) {
+      setError(
+        createError instanceof Error ? createError.message : "Failed to create feature",
+      );
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  if (error && !project) {
     return (
       <div className="flex min-h-screen items-center justify-center text-mist">
         {error}
@@ -68,6 +102,8 @@ export function FeaturesPageClient({ projectId }: FeaturesPageClientProps) {
     );
   }
 
+  const canCreate = project.status === "ready";
+
   return (
     <AppShell project={project}>
       <header className="border-b border-rime-soft px-4 py-4 sm:px-6 sm:py-5 lg:px-8">
@@ -82,20 +118,52 @@ export function FeaturesPageClient({ projectId }: FeaturesPageClientProps) {
             <p className="mt-1 text-sm text-mist">{project.description}</p>
           </div>
 
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="inline-flex">
-                  <Button disabled className="gap-2">
-                    <Plus className="size-4" />
-                    New Feature
+          {canCreate ? (
+            showCreate ? (
+              <div className="flex w-full max-w-md flex-col gap-2 sm:flex-row">
+                <Input
+                  value={newTitle}
+                  onChange={(event) => setNewTitle(event.target.value)}
+                  placeholder="Feature title"
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") void handleCreateFeature();
+                  }}
+                />
+                <div className="flex gap-2">
+                  <Button disabled={creating} onClick={() => void handleCreateFeature()}>
+                    {creating ? "Creating…" : "Create"}
                   </Button>
-                </span>
-              </TooltipTrigger>
-              <TooltipContent>Coming soon</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+                  <Button variant="ghost" onClick={() => setShowCreate(false)}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <Button className="gap-2" onClick={() => setShowCreate(true)}>
+                <Plus className="size-4" />
+                New Feature
+              </Button>
+            )
+          ) : (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="inline-flex">
+                    <Button disabled className="gap-2">
+                      <Plus className="size-4" />
+                      New Feature
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>Complete project initialization first</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
         </div>
+
+        {error && project ? (
+          <p className="mt-3 text-sm text-red-400">{error}</p>
+        ) : null}
       </header>
 
       <main className="flex-1 px-4 py-4 sm:px-6 sm:py-6 lg:px-8">

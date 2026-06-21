@@ -22,10 +22,16 @@ export async function middleware(request: NextRequest) {
   }
 
   const cookie = request.headers.get("cookie") ?? "";
-  const meResponse = await fetch(internalApiUrl("/auth/me"), {
-    headers: { cookie },
-    cache: "no-store",
-  });
+  let meResponse: Response;
+  try {
+    meResponse = await fetch(internalApiUrl("/auth/me"), {
+      headers: { cookie },
+      cache: "no-store",
+    });
+  } catch {
+    // API unreachable (e.g. container restarting) — don't crash the page shell.
+    return NextResponse.next();
+  }
 
   if (meResponse.status === 401) {
     const loginUrl = new URL(appPath("/login"), request.url);

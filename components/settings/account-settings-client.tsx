@@ -102,6 +102,8 @@ export function AccountSettingsClient() {
         name: "Account",
         slug: "account",
         description: "",
+        status: "ready",
+        repositories: [],
       }}
     >
       <div className="mx-auto max-w-2xl space-y-6 p-6">

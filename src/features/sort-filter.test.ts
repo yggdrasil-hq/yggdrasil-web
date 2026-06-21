@@ -15,8 +15,15 @@ const sampleFeatures: Feature[] = [
     id: "a",
     projectId: "p1",
     title: "Zebra",
+    slug: "zebra",
+    featureType: "normal",
     specExcerpt: "last",
-    status: "ready",
+    status: "spec_ready",
+    adrMarkdown: "# ADR",
+    awaitingUserInput: false,
+    adrApproved: false,
+    branchName: null,
+    prUrl: null,
     createdAt: "2024-01-03T00:00:00.000Z",
     updatedAt: "2024-01-05T00:00:00.000Z",
   },
@@ -24,8 +31,15 @@ const sampleFeatures: Feature[] = [
     id: "b",
     projectId: "p1",
     title: "Alpha",
+    slug: "alpha",
+    featureType: "normal",
     specExcerpt: "first",
     status: "draft",
+    adrMarkdown: null,
+    awaitingUserInput: true,
+    adrApproved: false,
+    branchName: null,
+    prUrl: null,
     createdAt: "2024-01-01T00:00:00.000Z",
     updatedAt: "2024-01-02T00:00:00.000Z",
   },
@@ -33,8 +47,15 @@ const sampleFeatures: Feature[] = [
     id: "c",
     projectId: "p1",
     title: "Beta",
+    slug: "beta",
+    featureType: "normal",
     specExcerpt: "middle",
-    status: "ready",
+    status: "running",
+    adrMarkdown: "# ADR",
+    awaitingUserInput: false,
+    adrApproved: true,
+    branchName: "yggdrasil/beta-c",
+    prUrl: null,
     createdAt: "2024-01-02T00:00:00.000Z",
     updatedAt: "2024-01-04T00:00:00.000Z",
   },
@@ -80,7 +101,11 @@ describe("orderedStatusGroups", () => {
     const groups = groupFeaturesByStatus(filtered);
     const ordered = orderedStatusGroups(groups);
 
-    expect(ordered.map((group) => group.status)).toEqual(["draft", "ready"]);
+    expect(ordered.map((group) => group.status)).toEqual([
+      "draft",
+      "spec_ready",
+      "running",
+    ]);
     expect(ordered[1]?.features[0]?.title).toBe("Zebra");
   });
 });
