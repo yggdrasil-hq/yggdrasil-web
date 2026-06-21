@@ -70,13 +70,13 @@ export function FeaturesPageClient({ projectId }: FeaturesPageClientProps) {
 
   return (
     <AppShell project={project}>
-      <header className="border-b border-rime-soft px-6 py-5 lg:px-8">
+      <header className="border-b border-rime-soft px-4 py-4 sm:px-6 sm:py-5 lg:px-8">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
+          <div className="min-w-0">
             <p className="text-xs font-medium uppercase tracking-[0.14em] text-shadow">
               Project
             </p>
-            <h1 className="text-2xl font-semibold tracking-tight text-frost">
+            <h1 className="text-xl font-semibold tracking-tight text-frost sm:text-2xl">
               Features
             </h1>
             <p className="mt-1 text-sm text-mist">{project.description}</p>
@@ -98,7 +98,7 @@ export function FeaturesPageClient({ projectId }: FeaturesPageClientProps) {
         </div>
       </header>
 
-      <main className="flex-1 px-6 py-6 lg:px-8">
+      <main className="flex-1 px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
         <div className="mx-auto max-w-content">
           <FeatureList features={features} projectId={projectId} />
         </div>

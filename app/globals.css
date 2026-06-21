@@ -44,6 +44,6 @@
   }
 
   body {
-    @apply bg-niflheim text-foreground font-sans antialiased;
+    @apply text-foreground font-sans antialiased;
   }
 }

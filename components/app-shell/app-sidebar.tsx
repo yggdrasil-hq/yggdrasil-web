@@ -8,6 +8,7 @@ import {
   LayoutGrid,
   Settings,
   User,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { YggdrasilLogo } from "@/components/brand/yggdrasil-logo";
@@ -16,6 +17,9 @@ import { cn } from "@/lib/utils";
 
 interface AppSidebarProps {
   project: Project;
+  open?: boolean;
+  onClose?: () => void;
+  onNavigate?: () => void;
 }
 
 const navItems = [
@@ -39,13 +43,35 @@ const navItems = [
   },
 ] as const;
 
-export function AppSidebar({ project }: AppSidebarProps) {
+export function AppSidebar({
+  project,
+  open = false,
+  onClose,
+  onNavigate,
+}: AppSidebarProps) {
   const pathname = usePathname();
 
   return (
-    <aside className="sticky top-0 flex h-screen w-64 shrink-0 flex-col border-r border-rime-soft bg-surface-01">
-      <div className="border-b border-rime-soft px-4 py-5">
+    <aside
+      id="app-sidebar"
+      className={cn(
+        "fixed inset-y-0 left-0 z-50 flex h-screen w-64 flex-col border-r border-rime-soft bg-surface-01 transition-transform duration-200 ease-in-out lg:translate-x-0",
+        open ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
+      )}
+    >
+      <div className="flex items-center justify-between border-b border-rime-soft px-4 py-5">
         <YggdrasilLogo />
+        {onClose && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="lg:hidden"
+            onClick={onClose}
+            aria-label="Close navigation menu"
+          >
+            <X className="size-5" />
+          </Button>
+        )}
       </div>
 
       <div className="border-b border-rime-soft px-3 py-4">
@@ -59,7 +85,7 @@ export function AppSidebar({ project }: AppSidebarProps) {
         </Button>
       </div>
 
-      <nav className="flex-1 space-y-1 px-3 py-4">
+      <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
         {navItems.map((item) => {
           const href = item.href(project.id);
           const active = item.enabled && pathname.startsWith(href);
@@ -71,7 +97,7 @@ export function AppSidebar({ project }: AppSidebarProps) {
                 key={item.label}
                 className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-shadow"
               >
-                <Icon className="size-4" />
+                <Icon className="size-4 shrink-0" />
                 {item.label}
                 <span className="ml-auto text-[10px] uppercase tracking-wider">
                   Soon
@@ -84,6 +110,7 @@ export function AppSidebar({ project }: AppSidebarProps) {
             <Link
               key={item.label}
               href={href}
+              onClick={onNavigate}
               className={cn(
                 "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
                 active
@@ -91,7 +118,7 @@ export function AppSidebar({ project }: AppSidebarProps) {
                   : "text-mist hover:bg-surface-02 hover:text-frost",
               )}
             >
-              <Icon className="size-4" />
+              <Icon className="size-4 shrink-0" />
               {item.label}
             </Link>
           );
@@ -100,7 +127,7 @@ export function AppSidebar({ project }: AppSidebarProps) {
 
       <div className="border-t border-rime-soft px-3 py-4">
         <div className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-mist">
-          <div className="flex size-8 items-center justify-center rounded-full bg-surface-03">
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-surface-03">
             <User className="size-4" />
           </div>
           <div className="min-w-0">

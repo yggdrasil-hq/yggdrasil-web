@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Space_Grotesk, JetBrains_Mono } from "next/font/google";
+import { HaloBackground } from "@/components/background/halo-background";
 import { MswProvider } from "@/components/providers/msw-provider";
 import "./globals.css";
 
@@ -20,6 +21,11 @@ export const metadata: Metadata = {
   description: "AI-orchestrated software development",
 };
 
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -30,7 +36,10 @@ export default function RootLayout({
       <body
         className={`${spaceGrotesk.variable} ${jetbrainsMono.variable} font-sans antialiased`}
       >
-        <MswProvider>{children}</MswProvider>
+        <HaloBackground />
+        <div className="relative z-10 min-h-screen">
+          <MswProvider>{children}</MswProvider>
+        </div>
       </body>
     </html>
   );

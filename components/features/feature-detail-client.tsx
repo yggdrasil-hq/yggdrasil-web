@@ -68,13 +68,13 @@ export function FeatureDetailClient({
 
   return (
     <AppShell project={project}>
-      <header className="border-b border-rime-soft px-6 py-5 lg:px-8">
+      <header className="border-b border-rime-soft px-4 py-4 sm:px-6 sm:py-5 lg:px-8">
         <div className="flex flex-col gap-3">
           <Button variant="ghost" className="w-fit px-0 text-mist hover:text-frost" asChild>
             <Link href={`/projects/${projectId}/features`}>← Back to features</Link>
           </Button>
-          <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-2xl font-semibold tracking-tight text-frost">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            <h1 className="text-xl font-semibold tracking-tight text-frost sm:text-2xl">
               {feature.title}
             </h1>
             <StatusBadge status={feature.status} />
@@ -82,8 +82,8 @@ export function FeatureDetailClient({
         </div>
       </header>
 
-      <main className="flex-1 px-6 py-8 lg:px-8">
-        <div className="mx-auto max-w-content rounded-card border border-dashed border-rime bg-surface-01 px-6 py-12 text-center">
+      <main className="flex-1 px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
+        <div className="mx-auto max-w-content rounded-card border border-dashed border-rime bg-surface-01 px-4 py-8 text-center sm:px-6 sm:py-12">
           <p className="text-sm text-mist">Detail view coming soon.</p>
           <p className="mt-2 text-xs text-shadow">
             This stub reserves space for the full feature spec editor and run timeline.

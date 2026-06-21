@@ -29,7 +29,7 @@ export function StatusGroup({
 
   return (
     <Collapsible defaultOpen={defaultOpen} className="space-y-3">
-      <CollapsibleTrigger className="group flex w-full items-center gap-3 rounded-md px-1 py-1 text-left hover:bg-surface-01">
+      <CollapsibleTrigger className="group flex w-full items-center gap-3 rounded-md px-1 py-1 text-left">
         <ChevronDown
           className={cn(
             "size-4 text-shadow transition-transform group-data-[state=closed]:-rotate-90",
