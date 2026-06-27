@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { PasswordRecoveryWarning } from "@/components/auth/password-warning";
 import { UserAvatar } from "@/components/auth/user-avatar";
-import { AppShell } from "@/components/app-shell/app-shell";
+import { HubLayout } from "@/components/app-shell/hub-layout";
 import { useAuth } from "@/components/providers/auth-provider";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,7 +22,7 @@ import {
   updateDisplayName,
 } from "@/lib/auth/api";
 import { AuthApiError } from "@/lib/auth/types";
-import { MOCK_PROJECT_ID, appRoute, oauthStartUrl } from "@/lib/config";
+import { appRoute, oauthStartUrl } from "@/lib/config";
 
 export function AccountSettingsClient() {
   const router = useRouter();
@@ -96,22 +96,12 @@ export function AccountSettingsClient() {
   }
 
   return (
-    <AppShell
-      project={{
-        id: MOCK_PROJECT_ID,
-        name: "Account",
-        slug: "account",
-        description: "",
-        status: "ready",
-        repositories: [],
-      }}
+    <HubLayout
+      title="Account"
+      description="Profile, security, and connections."
+      className="max-w-2xl"
     >
-      <div className="mx-auto max-w-2xl space-y-6 p-6">
-        <div>
-          <h1 className="font-display text-2xl font-semibold text-frost">Account</h1>
-          <p className="mt-1 text-sm text-mist">Profile, security, and connections</p>
-        </div>
-
+      <div className="space-y-6">
         {message ? <p className="text-sm text-bifrost">{message}</p> : null}
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
@@ -226,11 +216,11 @@ export function AccountSettingsClient() {
         </Card>
 
         <p className="text-sm text-mist">
-          <Link href={appRoute("/")} className="text-primary hover:underline">
-            Back to app
+          <Link href={appRoute("/projects")} className="text-primary hover:underline">
+            Back to projects
           </Link>
         </p>
       </div>
-    </AppShell>
+    </HubLayout>
   );
 }

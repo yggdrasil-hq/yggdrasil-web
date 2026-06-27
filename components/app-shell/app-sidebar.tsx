@@ -49,7 +49,7 @@ const navItems = [
   },
 ] as const;
 
-const settingsHref = appRoute("/settings/account");
+const accountHref = appRoute("/settings/account");
 const notificationsHref = appRoute("/notifications");
 
 export function AppSidebar({
@@ -62,6 +62,7 @@ export function AppSidebar({
   const router = useRouter();
   const { user, setUser } = useAuth();
 
+  const settingsHref = appRoute(`/projects/${project.id}/settings`);
   const settingsActive =
     pathname === settingsHref || pathname.startsWith(`${settingsHref}/`);
   const notificationsActive =
@@ -195,13 +196,17 @@ export function AppSidebar({
         </div>
 
         {user ? (
-          <div className="mt-3 flex items-center gap-3 rounded-md px-3 py-2">
+          <Link
+            href={accountHref}
+            onClick={onNavigate}
+            className="mt-3 flex items-center gap-3 rounded-md px-3 py-2 transition-colors hover:bg-surface-02"
+          >
             <UserAvatar username={user.username} className="size-8" />
             <div className="min-w-0">
               <p className="truncate font-medium text-frost">{user.displayName}</p>
               <p className="truncate text-xs text-shadow">@{user.username}</p>
             </div>
-          </div>
+          </Link>
         ) : null}
       </div>
     </aside>
