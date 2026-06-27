@@ -8,7 +8,33 @@ import type {
 } from "@/lib/features/types";
 import { MOCK_PROJECT_ID } from "@/lib/config";
 
-export const mockProject: Project = {
+function computeRepositoryRemovalBlockedReason(project: Project): string | null {
+  if (project.status === "initializing") {
+    return "Finish project initialization before removing repositories.";
+  }
+
+  const features = mockFeatures.filter((feature) => feature.projectId === project.id);
+  if (features.some((feature) => ["draft", "queued", "running"].includes(feature.status))) {
+    return "Wait for active feature runs to finish before removing repositories.";
+  }
+
+  if (mockActiveTestRunProjectIds.has(project.id)) {
+    return "Wait for active test runs to finish before removing repositories.";
+  }
+
+  return null;
+}
+
+function withRepositoryRemovalBlockedReason(project: Project): Project {
+  return {
+    ...project,
+    repositoryRemovalBlockedReason: computeRepositoryRemovalBlockedReason(project),
+  };
+}
+
+const mockActiveTestRunProjectIds = new Set<string>();
+
+export const mockProject: Project = withRepositoryRemovalBlockedReason({
   id: MOCK_PROJECT_ID,
   name: "Acme Web App",
   slug: "acme-web-app",
@@ -22,7 +48,8 @@ export const mockProject: Project = {
       isPrimary: true,
     },
   ],
-};
+  repositoryRemovalBlockedReason: null,
+});
 
 export const mockProjects: Project[] = [mockProject];
 
@@ -240,11 +267,12 @@ export const mockNotifications: Notification[] = [
 ];
 
 export function getMockProjects(): Project[] {
-  return mockProjects;
+  return mockProjects.map(withRepositoryRemovalBlockedReason);
 }
 
 export function getMockProject(projectId: string): Project | undefined {
-  return mockProjects.find((project) => project.id === projectId);
+  const project = mockProjects.find((item) => item.id === projectId);
+  return project ? withRepositoryRemovalBlockedReason(project) : undefined;
 }
 
 export function addMockProject(project: Project): void {
@@ -279,6 +307,7 @@ export function createMockProject(input: {
       githubRepo: repo.githubRepo,
       isPrimary: repo.isPrimary,
     })),
+    repositoryRemovalBlockedReason: null,
   };
 
   const initFeature: Feature = {
@@ -301,7 +330,77 @@ export function createMockProject(input: {
   addMockProject(project);
   addMockFeature(initFeature);
 
-  return { project, initFeature };
+  return { project: withRepositoryRemovalBlockedReason(project), initFeature };
+}
+
+export function addMockProjectRepository(
+  projectId: string,
+  input: { githubOwner: string; githubRepo: string },
+): Project | undefined {
+  const project = mockProjects.find((item) => item.id === projectId);
+  if (!project) {
+    return undefined;
+  }
+
+  const owner = input.githubOwner.trim();
+  const repo = input.githubRepo.trim();
+  const normalizedOwner = owner.toLowerCase();
+  const normalizedRepo = repo.toLowerCase();
+
+  const primary = project.repositories.find((item) => item.isPrimary);
+  if (
+    primary &&
+    primary.githubOwner.toLowerCase() === normalizedOwner &&
+    primary.githubRepo.toLowerCase() === normalizedRepo
+  ) {
+    throw new Error("Primary repository is already linked to this project");
+  }
+
+  if (
+    project.repositories.some(
+      (item) =>
+        item.githubOwner.toLowerCase() === normalizedOwner &&
+        item.githubRepo.toLowerCase() === normalizedRepo,
+    )
+  ) {
+    throw new Error("Repository is already linked to this project");
+  }
+
+  project.repositories.push({
+    id: `repo_${projectId}_${Date.now()}`,
+    githubOwner: owner,
+    githubRepo: repo,
+    isPrimary: false,
+  });
+
+  return withRepositoryRemovalBlockedReason(project);
+}
+
+export function removeMockProjectRepository(
+  projectId: string,
+  repositoryId: string,
+): Project | "not_found" | "primary" | "blocked" {
+  const project = mockProjects.find((item) => item.id === projectId);
+  if (!project) {
+    return "not_found";
+  }
+
+  const blockedReason = computeRepositoryRemovalBlockedReason(project);
+  if (blockedReason) {
+    return "blocked";
+  }
+
+  const index = project.repositories.findIndex((item) => item.id === repositoryId);
+  if (index === -1) {
+    return "not_found";
+  }
+
+  if (project.repositories[index]?.isPrimary) {
+    return "primary";
+  }
+
+  project.repositories.splice(index, 1);
+  return withRepositoryRemovalBlockedReason(project);
 }
 
 export function getMockFeatures(projectId: string): Feature[] {

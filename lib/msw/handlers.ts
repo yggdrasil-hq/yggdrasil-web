@@ -2,6 +2,7 @@ import { http, HttpResponse } from "msw";
 import { apiUrl } from "@/lib/config";
 import {
   addMockFeature,
+  addMockProjectRepository,
   createMockProject,
   getMockFeature,
   getMockFeatures,
@@ -12,6 +13,7 @@ import {
   addMockTest,
   mockNotifications,
   mockOverview,
+  removeMockProjectRepository,
   updateMockFeature,
   updateMockTest,
 } from "@/lib/msw/fixtures";
@@ -74,7 +76,7 @@ export const handlers = [
     if (initFeature) {
       updateMockFeature(project.id, initFeature.id, { status: "merged" });
     }
-    return HttpResponse.json(project);
+    return HttpResponse.json(getMockProject(project.id)!);
   }),
 
   http.get(apiUrl("/projects/:projectId"), ({ params }) => {
@@ -84,6 +86,70 @@ export const handlers = [
     }
     return HttpResponse.json(project);
   }),
+
+  http.post(apiUrl("/projects/:projectId/repositories"), async ({ params, request }) => {
+    const projectId = String(params.projectId);
+    const project = getMockProject(projectId);
+    if (!project) {
+      return HttpResponse.json({ error: "Project not found" }, { status: 404 });
+    }
+
+    const body = (await request.json()) as {
+      githubOwner?: string;
+      githubRepo?: string;
+    };
+    const githubOwner = body.githubOwner?.trim();
+    const githubRepo = body.githubRepo?.trim();
+
+    if (!githubOwner || !githubRepo) {
+      return HttpResponse.json({ error: "Invalid input" }, { status: 400 });
+    }
+
+    try {
+      const updated = addMockProjectRepository(projectId, { githubOwner, githubRepo });
+      if (!updated) {
+        return HttpResponse.json({ error: "Project not found" }, { status: 404 });
+      }
+      return HttpResponse.json(updated, { status: 201 });
+    } catch (error) {
+      return HttpResponse.json(
+        { error: error instanceof Error ? error.message : "Unable to add repository" },
+        { status: 409 },
+      );
+    }
+  }),
+
+  http.delete(
+    apiUrl("/projects/:projectId/repositories/:repositoryId"),
+    ({ params }) => {
+      const projectId = String(params.projectId);
+      const repositoryId = String(params.repositoryId);
+      const project = getMockProject(projectId);
+      if (!project) {
+        return HttpResponse.json({ error: "Project not found" }, { status: 404 });
+      }
+
+      const result = removeMockProjectRepository(projectId, repositoryId);
+      if (result === "not_found") {
+        return HttpResponse.json({ error: "Repository not found" }, { status: 404 });
+      }
+      if (result === "primary") {
+        return HttpResponse.json({ error: "Primary repository cannot be removed" }, { status: 409 });
+      }
+      if (result === "blocked") {
+        return HttpResponse.json(
+          {
+            error:
+              project.repositoryRemovalBlockedReason ??
+              "Repository removal is currently blocked",
+          },
+          { status: 409 },
+        );
+      }
+
+      return HttpResponse.json(result);
+    },
+  ),
 
   http.get(apiUrl("/projects/:projectId/overview"), ({ params }) => {
     const project = getMockProject(String(params.projectId));

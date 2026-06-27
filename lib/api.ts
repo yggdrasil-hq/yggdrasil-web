@@ -54,6 +54,35 @@ export async function fetchProject(projectId: string): Promise<Project> {
   return parseJson<Project>(response);
 }
 
+export interface AddProjectRepositoryInput {
+  githubOwner: string;
+  githubRepo: string;
+}
+
+export async function addProjectRepository(
+  projectId: string,
+  input: AddProjectRepositoryInput,
+): Promise<Project> {
+  const response = await fetch(apiUrl(`/projects/${projectId}/repositories`), {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return parseJson<Project>(response);
+}
+
+export async function removeProjectRepository(
+  projectId: string,
+  repositoryId: string,
+): Promise<Project> {
+  const response = await fetch(apiUrl(`/projects/${projectId}/repositories/${repositoryId}`), {
+    method: "DELETE",
+    credentials: "include",
+  });
+  return parseJson<Project>(response);
+}
+
 export async function completeProjectInit(projectId: string): Promise<Project> {
   const response = await fetch(apiUrl(`/projects/${projectId}/complete-init`), {
     method: "POST",

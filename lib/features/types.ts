@@ -16,6 +16,7 @@ export interface Project {
   description: string;
   status: ProjectStatus;
   repositories: ProjectRepository[];
+  repositoryRemovalBlockedReason: string | null;
 }
 
 export type FeatureType = "normal" | "project_init";
