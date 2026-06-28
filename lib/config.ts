@@ -47,6 +47,22 @@ export function stripAppBasePath(pathname: string): string {
   return pathname;
 }
 
-export function oauthStartUrl(intent: "login" | "signup" | "link" | "upgrade"): string {
+export function oauthStartUrl(intent: "login" | "signup" | "link"): string {
   return apiUrl(`/auth/github?intent=${intent}`);
+}
+
+export function githubInstallStartUrl(input: {
+  name: string;
+  description?: string;
+  returnTo?: string;
+}): string {
+  const url = new URL(apiUrl("/github/install"));
+  url.searchParams.set("name", input.name);
+  if (input.description) {
+    url.searchParams.set("description", input.description);
+  }
+  if (input.returnTo) {
+    url.searchParams.set("return_to", input.returnTo);
+  }
+  return url.toString();
 }

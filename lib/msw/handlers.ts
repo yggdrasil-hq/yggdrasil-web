@@ -11,6 +11,8 @@ import {
   getMockTest,
   getMockTests,
   addMockTest,
+  mockInstallationRepos,
+  mockInstallations,
   mockNotifications,
   mockOverview,
   removeMockProjectRepository,
@@ -20,6 +22,24 @@ import {
 import type { Feature, Test } from "@/lib/features/types";
 
 export const handlers = [
+  http.get(apiUrl("/github/installations"), () => {
+    return HttpResponse.json(mockInstallations);
+  }),
+
+  http.get(apiUrl("/github/installations/:installationId/repos"), () => {
+    return HttpResponse.json(mockInstallationRepos);
+  }),
+
+  http.get(apiUrl("/github/installations/:installationId/configure-url"), ({ params }) => {
+    return HttpResponse.json({
+      url: `https://github.com/apps/yggdrasil-mock/installations/${String(params.installationId)}`,
+    });
+  }),
+
+  http.post(apiUrl("/github/installations/:installationId/sync"), () => {
+    return HttpResponse.json(mockInstallationRepos);
+  }),
+
   http.get(apiUrl("/projects"), () => {
     return HttpResponse.json(getMockProjects());
   }),
@@ -28,6 +48,7 @@ export const handlers = [
     const body = (await request.json()) as {
       name?: string;
       description?: string;
+      installationId?: string;
       repositories?: Array<{
         githubOwner: string;
         githubRepo: string;
@@ -36,11 +57,15 @@ export const handlers = [
     };
 
     const name = body.name?.trim();
+    const installationId = body.installationId?.trim();
     const repositories = body.repositories ?? [];
     const primaryCount = repositories.filter((repo) => repo.isPrimary).length;
 
     if (!name) {
       return HttpResponse.json({ error: "Name is required" }, { status: 400 });
+    }
+    if (!installationId) {
+      return HttpResponse.json({ error: "installationId is required" }, { status: 400 });
     }
     if (repositories.length === 0 || primaryCount !== 1) {
       return HttpResponse.json(

@@ -38,7 +38,7 @@ export function ActionQueue({ items }: ActionQueueProps) {
       </CardHeader>
       <ul className="divide-y divide-rime-soft border-t border-rime-soft">
         {items.map((item) => (
-          <li key={`${item.type}-${item.featureId ?? item.testId}`}>
+          <li key={`${item.type}-${item.featureId ?? item.testId ?? item.linkPath}`}>
             <Link
               href={appRoute(item.linkPath)}
               className="flex items-center gap-4 px-6 py-4 transition-colors hover:bg-surface-02"

@@ -178,7 +178,10 @@ export function AccountSettingsClient() {
         <Card>
           <CardHeader>
             <CardTitle>Connections</CardTitle>
-            <CardDescription>GitHub is required for agent runs on your repos</CardDescription>
+            <CardDescription>
+              Link GitHub for sign-in convenience. Repository access is configured per project
+              via the GitHub App install flow.
+            </CardDescription>
           </CardHeader>
           <div className="space-y-4 px-4 pb-4">
             {user.githubConnected ? (
@@ -209,8 +212,8 @@ export function AccountSettingsClient() {
               </>
             )}
             <p className="text-xs text-shadow">
-              Need repo access for projects? Use upgrade from project settings (coming soon)
-              or reconnect with broader scopes.
+              To grant repo access, install the Yggdrasil GitHub App when creating or configuring
+              a project.
             </p>
           </div>
         </Card>

@@ -40,6 +40,8 @@ export const mockProject: Project = withRepositoryRemovalBlockedReason({
   slug: "acme-web-app",
   description: "Customer dashboard and billing portal for Acme Corp.",
   status: "ready",
+  installationId: "inst_mock_acme",
+  githubAccessWarning: false,
   repositories: [
     {
       id: "repo_primary",
@@ -52,6 +54,28 @@ export const mockProject: Project = withRepositoryRemovalBlockedReason({
 });
 
 export const mockProjects: Project[] = [mockProject];
+
+export const mockInstallations = [
+  {
+    id: "inst_mock_acme",
+    accountType: "Organization" as const,
+    accountLogin: "acme-corp",
+    githubInstallationId: 12345,
+  },
+];
+
+export const mockInstallationRepos = [
+  {
+    fullName: "acme-corp/acme-web",
+    githubOwner: "acme-corp",
+    githubRepo: "acme-web",
+  },
+  {
+    fullName: "acme-corp/acme-api",
+    githubOwner: "acme-corp",
+    githubRepo: "acme-api",
+  },
+];
 
 const now = Date.now();
 const hours = (n: number) => new Date(now - n * 60 * 60 * 1000).toISOString();
@@ -301,6 +325,8 @@ export function createMockProject(input: {
     slug,
     description: input.description,
     status: "initializing",
+    installationId: "inst_mock_acme",
+    githubAccessWarning: false,
     repositories: input.repositories.map((repo, index) => ({
       id: `repo_${id}_${index}`,
       githubOwner: repo.githubOwner,

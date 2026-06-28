@@ -167,6 +167,18 @@ export function ProjectSettingsClient({ projectId }: ProjectSettingsClientProps)
             </p>
           </div>
 
+          {project.githubAccessWarning ? (
+            <Card className="border-amber-500/30 bg-amber-500/10">
+              <CardHeader>
+                <CardTitle>GitHub access needs attention</CardTitle>
+                <CardDescription>
+                  The GitHub App installation no longer has access to one or more linked
+                  repositories. Fix access on GitHub before dispatching new jobs.
+                </CardDescription>
+              </CardHeader>
+            </Card>
+          ) : null}
+
           <Card>
             <CardHeader>
               <CardTitle>Primary repository</CardTitle>
@@ -331,8 +343,7 @@ export function ProjectSettingsClient({ projectId }: ProjectSettingsClientProps)
             <CardHeader>
               <CardTitle>More settings coming soon</CardTitle>
               <CardDescription>
-                Model defaults, build commands, agent timeouts, and GitHub scope upgrades will
-                be configurable here.
+                Model defaults, build commands, and agent timeouts will be configurable here.
               </CardDescription>
             </CardHeader>
           </Card>

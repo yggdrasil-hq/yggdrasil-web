@@ -69,4 +69,5 @@ export const ACTION_QUEUE_LABELS: Record<string, string> = {
   changes_requested: "Changes requested",
   test_failure: "Test failure",
   failed_build: "Failed build",
+  fix_github_access: "Fix GitHub access",
 };

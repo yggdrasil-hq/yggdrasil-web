@@ -15,8 +15,23 @@ export interface Project {
   slug: string;
   description: string;
   status: ProjectStatus;
+  installationId: string | null;
+  githubAccessWarning: boolean;
   repositories: ProjectRepository[];
   repositoryRemovalBlockedReason: string | null;
+}
+
+export interface GithubInstallation {
+  id: string;
+  accountType: "Organization" | "User";
+  accountLogin: string;
+  githubInstallationId: number;
+}
+
+export interface InstallationRepo {
+  fullName: string;
+  githubOwner: string;
+  githubRepo: string;
 }
 
 export type FeatureType = "normal" | "project_init";
@@ -65,7 +80,8 @@ export type ActionQueueType =
   | "pr_review"
   | "changes_requested"
   | "test_failure"
-  | "failed_build";
+  | "failed_build"
+  | "fix_github_access";
 
 export interface ActionQueueItem {
   type: ActionQueueType;
