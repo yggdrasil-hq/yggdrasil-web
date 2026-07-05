@@ -56,7 +56,7 @@ export function githubInstallStartUrl(input: {
   description?: string;
   returnTo?: string;
 }): string {
-  const url = new URL(apiUrl("/github/install"));
+  const url = new URL(apiUrl("/github/install"), window.location.origin);
   url.searchParams.set("name", input.name);
   if (input.description) {
     url.searchParams.set("description", input.description);
