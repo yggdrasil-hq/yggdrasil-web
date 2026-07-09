@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/app-shell/app-shell";
 import { StatusBadge } from "@/components/features/status-badge";
+import { SpecGrillPanel } from "@/components/features/spec-grill-panel";
 import { Button } from "@/components/ui/button";
 import { fetchFeature, fetchProject, updateFeature } from "@/lib/api";
 import type { Feature, Project } from "@/lib/features/types";
@@ -82,6 +83,17 @@ export function FeatureDetailClient({
     }
   }
 
+  // The grill panel polls the feature independently of this component's own
+  // one-shot load() effect (it's the only way to notice a running grill
+  // finish/fail/get cancelled). Also resyncs adrDraft, which load() only
+  // ever sets once on mount — otherwise a draft -> spec_ready transition
+  // spotted by the panel would leave the ADR textarea showing stale (empty)
+  // content even though feature.adrMarkdown just got populated.
+  function handleGrillFeatureUpdate(updated: Feature) {
+    setFeature(updated);
+    setAdrDraft(updated.adrMarkdown ?? "");
+  }
+
   async function handleStartBuild() {
     setSaving(true);
     setError(null);
@@ -132,17 +144,12 @@ export function FeatureDetailClient({
           {error ? <p className="text-sm text-red-400">{error}</p> : null}
 
           {feature.status === "draft" && (
-            <section className="rounded-card border border-rime bg-surface-01 p-6">
-              <h2 className="text-base font-semibold text-frost">Spec grill in progress</h2>
-              <p className="mt-2 text-sm text-mist">
-                {feature.awaitingUserInput
-                  ? "The agent is waiting for your response in the grill session."
-                  : "The agent is exploring the codebase and preparing questions."}
-              </p>
-              <p className="mt-4 text-xs text-shadow">
-                Live grill chat will connect here once the Orchestrator integration ships.
-              </p>
-            </section>
+            <SpecGrillPanel
+              projectId={projectId}
+              featureId={featureId}
+              feature={feature}
+              onFeatureChange={handleGrillFeatureUpdate}
+            />
           )}
 
           {(feature.status === "spec_ready" ||

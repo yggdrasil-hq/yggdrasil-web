@@ -1,6 +1,7 @@
 import { apiUrl } from "@/lib/config";
 import type {
   Feature,
+  FeatureEventsResponse,
   GithubInstallation,
   InstallationRepo,
   Notification,
@@ -189,6 +190,42 @@ export async function updateFeature(
     body: JSON.stringify(body),
   });
   return parseJson<Feature>(response);
+}
+
+export async function fetchFeatureEvents(
+  projectId: string,
+  featureId: string,
+): Promise<FeatureEventsResponse> {
+  const response = await fetch(apiUrl(`/projects/${projectId}/features/${featureId}/events`), {
+    cache: "no-store",
+    credentials: "include",
+  });
+  return parseJson<FeatureEventsResponse>(response);
+}
+
+export async function sendFeatureMessage(
+  projectId: string,
+  featureId: string,
+  content: string,
+): Promise<void> {
+  const response = await fetch(
+    apiUrl(`/projects/${projectId}/features/${featureId}/messages`),
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content }),
+    },
+  );
+  await parseJson<unknown>(response);
+}
+
+export async function cancelFeatureGrill(projectId: string, featureId: string): Promise<void> {
+  const response = await fetch(apiUrl(`/projects/${projectId}/features/${featureId}/cancel`), {
+    method: "POST",
+    credentials: "include",
+  });
+  await parseJson<unknown>(response);
 }
 
 export async function fetchTests(projectId: string): Promise<Test[]> {

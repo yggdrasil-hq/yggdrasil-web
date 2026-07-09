@@ -97,6 +97,29 @@ export interface ProjectOverview {
   actionQueue: ActionQueueItem[];
 }
 
+export type JobStatus = "pending" | "running" | "completed" | "failed" | "cancelled";
+
+export type FeatureEventType =
+  | "agent_text"
+  | "ask_user"
+  | "submit_adr"
+  | "run_failed"
+  | "run_cancelled";
+
+export interface FeatureEvent {
+  id: string;
+  type: FeatureEventType;
+  question: string | null;
+  markdown: string | null;
+  message: string | null;
+  createdAt: string;
+}
+
+export interface FeatureEventsResponse {
+  jobStatus: JobStatus | null;
+  events: FeatureEvent[];
+}
+
 export interface Test {
   id: string;
   projectId: string;

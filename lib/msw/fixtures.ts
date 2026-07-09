@@ -1,6 +1,9 @@
 import type {
   ActionQueueItem,
   Feature,
+  FeatureEvent,
+  FeatureEventsResponse,
+  JobStatus,
   Notification,
   Project,
   ProjectOverview,
@@ -34,53 +37,16 @@ function withRepositoryRemovalBlockedReason(project: Project): Project {
 
 const mockActiveTestRunProjectIds = new Set<string>();
 
-export const mockProject: Project = withRepositoryRemovalBlockedReason({
-  id: MOCK_PROJECT_ID,
-  name: "Acme Web App",
-  slug: "acme-web-app",
-  description: "Customer dashboard and billing portal for Acme Corp.",
-  status: "ready",
-  installationId: "inst_mock_acme",
-  githubAccessWarning: false,
-  repositories: [
-    {
-      id: "repo_primary",
-      githubOwner: "acme-corp",
-      githubRepo: "acme-web",
-      isPrimary: true,
-    },
-  ],
-  repositoryRemovalBlockedReason: null,
-});
-
-export const mockProjects: Project[] = [mockProject];
-
-export const mockInstallations = [
-  {
-    id: "inst_mock_acme",
-    accountType: "Organization" as const,
-    accountLogin: "acme-corp",
-    githubInstallationId: 12345,
-  },
-];
-
-export const mockInstallationRepos = [
-  {
-    fullName: "acme-corp/acme-web",
-    githubOwner: "acme-corp",
-    githubRepo: "acme-web",
-  },
-  {
-    fullName: "acme-corp/acme-api",
-    githubOwner: "acme-corp",
-    githubRepo: "acme-api",
-  },
-];
-
 const now = Date.now();
 const hours = (n: number) => new Date(now - n * 60 * 60 * 1000).toISOString();
 const days = (n: number) => new Date(now - n * 24 * 60 * 60 * 1000).toISOString();
 
+// Declared before mockProject (not just before mockFeatures' own usages
+// below): mockProject's initializer eagerly calls
+// withRepositoryRemovalBlockedReason -> computeRepositoryRemovalBlockedReason,
+// which reads mockFeatures at module-evaluation time, not lazily — so
+// mockFeatures has to already be initialized by the time mockProject's
+// `const` initializer runs, or that read hits the temporal dead zone.
 export const mockFeatures: Feature[] = [
   {
     id: "feat_001",
@@ -213,6 +179,69 @@ export const mockFeatures: Feature[] = [
     updatedAt: days(4),
   },
 ];
+
+export const mockProject: Project = withRepositoryRemovalBlockedReason({
+  id: MOCK_PROJECT_ID,
+  name: "Acme Web App",
+  slug: "acme-web-app",
+  description: "Customer dashboard and billing portal for Acme Corp.",
+  status: "ready",
+  installationId: "inst_mock_acme",
+  githubAccessWarning: false,
+  repositories: [
+    {
+      id: "repo_primary",
+      githubOwner: "acme-corp",
+      githubRepo: "acme-web",
+      isPrimary: true,
+    },
+  ],
+  repositoryRemovalBlockedReason: null,
+});
+
+export const mockProjects: Project[] = [mockProject];
+
+export const mockInstallations = [
+  {
+    id: "inst_mock_acme",
+    accountType: "Organization" as const,
+    accountLogin: "acme-corp",
+    githubInstallationId: 12345,
+  },
+];
+
+export const mockInstallationRepos = [
+  {
+    fullName: "acme-corp/acme-web",
+    githubOwner: "acme-corp",
+    githubRepo: "acme-web",
+  },
+  {
+    fullName: "acme-corp/acme-api",
+    githubOwner: "acme-corp",
+    githubRepo: "acme-api",
+  },
+];
+
+// feat_001 is the only "draft" feature in mockFeatures — a running grill
+// with one pending ask_user question, matching its awaitingUserInput: true.
+export const mockJobEvents: Record<string, FeatureEvent[]> = {
+  feat_001: [
+    {
+      id: "jobevent_001",
+      type: "ask_user",
+      question:
+        "Should GitHub OAuth support linking to an existing email/password account, or always create a new user?",
+      markdown: null,
+      message: null,
+      createdAt: hours(3),
+    },
+  ],
+};
+
+export const mockJobStatuses: Record<string, JobStatus> = {
+  feat_001: "running",
+};
 
 export const mockTests: Test[] = [
   {
@@ -477,6 +506,51 @@ export function updateMockFeature(
   };
   recalculateMockOverview();
   return mockFeatures[index];
+}
+
+export function getMockFeatureEvents(featureId: string): FeatureEventsResponse {
+  return {
+    jobStatus: mockJobStatuses[featureId] ?? null,
+    events: mockJobEvents[featureId] ?? [],
+  };
+}
+
+/** Simulates a grill session completing right after a reply — good enough for exercising the UI end-to-end without a real Orchestrator. */
+export function addMockFeatureReply(projectId: string, featureId: string, content: string): void {
+  const events = mockJobEvents[featureId] ?? (mockJobEvents[featureId] = []);
+  const adrMarkdown = `# ADR: mock reply\n\nGenerated after your reply: "${content}"\n`;
+  events.push({
+    id: `jobevent_${Date.now()}`,
+    type: "submit_adr",
+    question: null,
+    markdown: adrMarkdown,
+    message: null,
+    createdAt: new Date().toISOString(),
+  });
+  mockJobStatuses[featureId] = "completed";
+  updateMockFeature(projectId, featureId, {
+    status: "spec_ready",
+    adrMarkdown,
+    awaitingUserInput: false,
+  });
+}
+
+export function cancelMockFeatureGrill(projectId: string, featureId: string): boolean {
+  if (mockJobStatuses[featureId] !== "running") {
+    return false;
+  }
+  const events = mockJobEvents[featureId] ?? (mockJobEvents[featureId] = []);
+  events.push({
+    id: `jobevent_${Date.now()}`,
+    type: "run_cancelled",
+    question: null,
+    markdown: null,
+    message: "job cancelled",
+    createdAt: new Date().toISOString(),
+  });
+  mockJobStatuses[featureId] = "cancelled";
+  updateMockFeature(projectId, featureId, { awaitingUserInput: false });
+  return true;
 }
 
 export function getMockTests(projectId: string): Test[] {

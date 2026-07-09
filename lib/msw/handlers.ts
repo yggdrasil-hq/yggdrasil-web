@@ -2,9 +2,12 @@ import { http, HttpResponse } from "msw";
 import { apiUrl } from "@/lib/config";
 import {
   addMockFeature,
+  addMockFeatureReply,
   addMockProjectRepository,
+  cancelMockFeatureGrill,
   createMockProject,
   getMockFeature,
+  getMockFeatureEvents,
   getMockFeatures,
   getMockProject,
   getMockProjects,
@@ -284,6 +287,57 @@ export const handlers = [
       return HttpResponse.json(updated);
     },
   ),
+
+  http.get(apiUrl("/projects/:projectId/features/:featureId/events"), ({ params }) => {
+    const feature = getMockFeature(String(params.projectId), String(params.featureId));
+    if (!feature) {
+      return HttpResponse.json({ error: "Feature not found" }, { status: 404 });
+    }
+    return HttpResponse.json(getMockFeatureEvents(String(params.featureId)));
+  }),
+
+  http.post(
+    apiUrl("/projects/:projectId/features/:featureId/messages"),
+    async ({ params, request }) => {
+      const projectId = String(params.projectId);
+      const featureId = String(params.featureId);
+      const feature = getMockFeature(projectId, featureId);
+      if (!feature) {
+        return HttpResponse.json({ error: "Feature not found" }, { status: 404 });
+      }
+
+      const body = (await request.json()) as { content?: string };
+      const content = body.content?.trim();
+      if (!content) {
+        return HttpResponse.json({ error: "content is required" }, { status: 400 });
+      }
+
+      if (getMockFeatureEvents(featureId).jobStatus !== "running") {
+        return HttpResponse.json(
+          { error: "No active grill session is waiting for a reply" },
+          { status: 409 },
+        );
+      }
+
+      addMockFeatureReply(projectId, featureId, content);
+      return HttpResponse.json({}, { status: 201 });
+    },
+  ),
+
+  http.post(apiUrl("/projects/:projectId/features/:featureId/cancel"), ({ params }) => {
+    const projectId = String(params.projectId);
+    const featureId = String(params.featureId);
+    const feature = getMockFeature(projectId, featureId);
+    if (!feature) {
+      return HttpResponse.json({ error: "Feature not found" }, { status: 404 });
+    }
+
+    const cancelled = cancelMockFeatureGrill(projectId, featureId);
+    if (!cancelled) {
+      return HttpResponse.json({ error: "No active grill session to cancel" }, { status: 409 });
+    }
+    return HttpResponse.json({});
+  }),
 
   http.get(apiUrl("/projects/:projectId/tests"), ({ params }) => {
     const project = getMockProject(String(params.projectId));
