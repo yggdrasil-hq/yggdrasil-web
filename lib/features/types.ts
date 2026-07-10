@@ -132,6 +132,15 @@ export interface Test {
   updatedAt: string;
 }
 
+export type ModelSecretKey = "MODEL_BASE_URL" | "MODEL_API_KEY" | "MODEL_ID";
+
+export interface ProjectSecretMetadata {
+  id: string;
+  key: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Notification {
   id: string;
   projectId: string | null;

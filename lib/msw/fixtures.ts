@@ -7,6 +7,7 @@ import type {
   Notification,
   Project,
   ProjectOverview,
+  ProjectSecretMetadata,
   Test,
 } from "@/lib/features/types";
 import { MOCK_PROJECT_ID } from "@/lib/config";
@@ -550,6 +551,72 @@ export function cancelMockFeatureGrill(projectId: string, featureId: string): bo
   });
   mockJobStatuses[featureId] = "cancelled";
   updateMockFeature(projectId, featureId, { awaitingUserInput: false });
+  return true;
+}
+
+interface MockSecret {
+  id: string;
+  projectId: string;
+  key: string;
+  value: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Plaintext `value` never leaves this module — handlers only ever return the
+// metadata shape, matching the real API's project_secrets encryption boundary.
+export const mockSecrets: MockSecret[] = [];
+
+function toSecretMetadata(secret: MockSecret): ProjectSecretMetadata {
+  return {
+    id: secret.id,
+    key: secret.key,
+    createdAt: secret.createdAt,
+    updatedAt: secret.updatedAt,
+  };
+}
+
+export function getMockSecrets(projectId: string): ProjectSecretMetadata[] {
+  return mockSecrets
+    .filter((secret) => secret.projectId === projectId)
+    .sort((a, b) => a.key.localeCompare(b.key))
+    .map(toSecretMetadata);
+}
+
+export function upsertMockSecret(
+  projectId: string,
+  key: string,
+  value: string,
+): ProjectSecretMetadata {
+  const existing = mockSecrets.find(
+    (secret) => secret.projectId === projectId && secret.key === key,
+  );
+  if (existing) {
+    existing.value = value;
+    existing.updatedAt = new Date().toISOString();
+    return toSecretMetadata(existing);
+  }
+
+  const created: MockSecret = {
+    id: `secret_${projectId}_${key}_${Date.now()}`,
+    projectId,
+    key,
+    value,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  mockSecrets.push(created);
+  return toSecretMetadata(created);
+}
+
+export function deleteMockSecret(projectId: string, secretId: string): boolean {
+  const index = mockSecrets.findIndex(
+    (secret) => secret.projectId === projectId && secret.id === secretId,
+  );
+  if (index === -1) {
+    return false;
+  }
+  mockSecrets.splice(index, 1);
   return true;
 }
 

@@ -8,6 +8,7 @@ import type {
   NotificationsResponse,
   Project,
   ProjectOverview,
+  ProjectSecretMetadata,
   Test,
 } from "@/lib/features/types";
 
@@ -132,6 +133,44 @@ export async function completeProjectInit(projectId: string): Promise<Project> {
     credentials: "include",
   });
   return parseJson<Project>(response);
+}
+
+export async function fetchProjectSecrets(
+  projectId: string,
+): Promise<ProjectSecretMetadata[]> {
+  const response = await fetch(apiUrl(`/projects/${projectId}/secrets`), {
+    cache: "no-store",
+    credentials: "include",
+  });
+  return parseJson<ProjectSecretMetadata[]>(response);
+}
+
+export async function upsertProjectSecret(
+  projectId: string,
+  key: string,
+  value: string,
+): Promise<ProjectSecretMetadata> {
+  const response = await fetch(apiUrl(`/projects/${projectId}/secrets`), {
+    method: "PUT",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ key, value }),
+  });
+  return parseJson<ProjectSecretMetadata>(response);
+}
+
+export async function deleteProjectSecret(
+  projectId: string,
+  secretId: string,
+): Promise<void> {
+  const response = await fetch(apiUrl(`/projects/${projectId}/secrets/${secretId}`), {
+    method: "DELETE",
+    credentials: "include",
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(body?.error ?? `API error: ${response.status} ${response.statusText}`);
+  }
 }
 
 export async function fetchProjectOverview(projectId: string): Promise<ProjectOverview> {

@@ -6,11 +6,13 @@ import {
   addMockProjectRepository,
   cancelMockFeatureGrill,
   createMockProject,
+  deleteMockSecret,
   getMockFeature,
   getMockFeatureEvents,
   getMockFeatures,
   getMockProject,
   getMockProjects,
+  getMockSecrets,
   getMockTest,
   getMockTests,
   addMockTest,
@@ -21,6 +23,7 @@ import {
   removeMockProjectRepository,
   updateMockFeature,
   updateMockTest,
+  upsertMockSecret,
 } from "@/lib/msw/fixtures";
 import type { Feature, Test } from "@/lib/features/types";
 
@@ -178,6 +181,43 @@ export const handlers = [
       return HttpResponse.json(result);
     },
   ),
+
+  http.get(apiUrl("/projects/:projectId/secrets"), ({ params }) => {
+    const project = getMockProject(String(params.projectId));
+    if (!project) {
+      return HttpResponse.json({ error: "Project not found" }, { status: 404 });
+    }
+    return HttpResponse.json(getMockSecrets(project.id));
+  }),
+
+  http.put(apiUrl("/projects/:projectId/secrets"), async ({ params, request }) => {
+    const project = getMockProject(String(params.projectId));
+    if (!project) {
+      return HttpResponse.json({ error: "Project not found" }, { status: 404 });
+    }
+
+    const body = (await request.json()) as { key?: string; value?: string };
+    const key = body.key?.trim();
+    if (!key || body.value === undefined) {
+      return HttpResponse.json({ error: "Invalid input" }, { status: 400 });
+    }
+
+    const secret = upsertMockSecret(project.id, key, body.value);
+    return HttpResponse.json(secret);
+  }),
+
+  http.delete(apiUrl("/projects/:projectId/secrets/:secretId"), ({ params }) => {
+    const project = getMockProject(String(params.projectId));
+    if (!project) {
+      return HttpResponse.json({ error: "Project not found" }, { status: 404 });
+    }
+
+    const deleted = deleteMockSecret(project.id, String(params.secretId));
+    if (!deleted) {
+      return HttpResponse.json({ error: "Secret not found" }, { status: 404 });
+    }
+    return new HttpResponse(null, { status: 204 });
+  }),
 
   http.get(apiUrl("/projects/:projectId/overview"), ({ params }) => {
     const project = getMockProject(String(params.projectId));

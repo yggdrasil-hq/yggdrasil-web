@@ -20,9 +20,16 @@ import {
 import {
   addProjectRepository,
   fetchProject,
+  fetchProjectSecrets,
   removeProjectRepository,
 } from "@/lib/api";
-import type { Project, ProjectRepository } from "@/lib/features/types";
+import { ModelSecretField } from "@/components/settings/model-secret-field";
+import type {
+  ModelSecretKey,
+  Project,
+  ProjectRepository,
+  ProjectSecretMetadata,
+} from "@/lib/features/types";
 
 interface ProjectSettingsClientProps {
   projectId: string;
@@ -37,8 +44,37 @@ function formatRepository(repo: ProjectRepository): string {
   return `${repo.githubOwner}/${repo.githubRepo}`;
 }
 
+const MODEL_SECRET_FIELDS: Array<{
+  key: ModelSecretKey;
+  label: string;
+  description: string;
+  placeholder: string;
+  masked?: boolean;
+}> = [
+  {
+    key: "MODEL_BASE_URL",
+    label: "Model base URL",
+    description: "OpenAI-chat-completions-compatible endpoint the agent sends requests to.",
+    placeholder: "https://api.openai.com/v1",
+  },
+  {
+    key: "MODEL_API_KEY",
+    label: "Model API key",
+    description: "Sent as the bearer token on every request to the base URL above.",
+    placeholder: "sk-…",
+    masked: true,
+  },
+  {
+    key: "MODEL_ID",
+    label: "Model ID",
+    description: "Model name passed in each request, e.g. gpt-4.1 or claude-sonnet-5.",
+    placeholder: "gpt-4.1",
+  },
+];
+
 export function ProjectSettingsClient({ projectId }: ProjectSettingsClientProps) {
   const [project, setProject] = useState<Project | null>(null);
+  const [secrets, setSecrets] = useState<ProjectSecretMetadata[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [pendingSubRepo, setPendingSubRepo] = useState<PendingSubRepo | null>(null);
@@ -53,9 +89,13 @@ export function ProjectSettingsClient({ projectId }: ProjectSettingsClientProps)
 
     async function load() {
       try {
-        const projectData = await fetchProject(projectId);
+        const [projectData, secretsData] = await Promise.all([
+          fetchProject(projectId),
+          fetchProjectSecrets(projectId),
+        ]);
         if (active) {
           setProject(projectData);
+          setSecrets(secretsData);
         }
       } catch (loadError) {
         if (active) {
@@ -72,6 +112,13 @@ export function ProjectSettingsClient({ projectId }: ProjectSettingsClientProps)
       active = false;
     };
   }, [projectId]);
+
+  function handleSecretChange(key: ModelSecretKey, metadata: ProjectSecretMetadata | null) {
+    setSecrets((current) => {
+      const withoutKey = current.filter((secret) => secret.key !== key);
+      return metadata ? [...withoutKey, metadata] : withoutKey;
+    });
+  }
 
   const primaryRepository = project?.repositories.find((repo) => repo.isPrimary);
   const subRepositories =
@@ -339,11 +386,36 @@ export function ProjectSettingsClient({ projectId }: ProjectSettingsClientProps)
             </div>
           </Card>
 
+          <Card>
+            <CardHeader>
+              <CardTitle>Model configuration</CardTitle>
+              <CardDescription>
+                Values used by the Pi coding agent for every job in this project. Once saved,
+                values are encrypted and never shown again — only whether a value is set.
+              </CardDescription>
+            </CardHeader>
+            <div className="space-y-3 px-4 pb-4">
+              {MODEL_SECRET_FIELDS.map((field) => (
+                <ModelSecretField
+                  key={field.key}
+                  projectId={projectId}
+                  secretKey={field.key}
+                  label={field.label}
+                  description={field.description}
+                  placeholder={field.placeholder}
+                  masked={field.masked}
+                  metadata={secrets.find((secret) => secret.key === field.key) ?? null}
+                  onChange={(metadata) => handleSecretChange(field.key, metadata)}
+                />
+              ))}
+            </div>
+          </Card>
+
           <Card className="border-dashed">
             <CardHeader>
               <CardTitle>More settings coming soon</CardTitle>
               <CardDescription>
-                Model defaults, build commands, and agent timeouts will be configurable here.
+                Build commands, tool allowlists, and agent timeouts will be configurable here.
               </CardDescription>
             </CardHeader>
           </Card>
