@@ -7,6 +7,7 @@ import {
   cancelFeatureGrill,
   fetchFeature,
   fetchFeatureEvents,
+  retryFeatureGrill,
   sendFeatureMessage,
 } from "@/lib/api";
 import type { Feature, FeatureEvent, JobStatus } from "@/lib/features/types";
@@ -40,6 +41,8 @@ export function SpecGrillPanel({
   const [replyDraft, setReplyDraft] = useState("");
   const [sendingReply, setSendingReply] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [retrying, setRetrying] = useState(false);
+  const [polled, setPolled] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -55,6 +58,7 @@ export function SpecGrillPanel({
         onFeatureChange(featureData);
         setEvents(eventsData.events);
         setJobStatus(eventsData.jobStatus);
+        setPolled(true);
       } catch {
         // Transient poll failures are ignored: the next tick retries, and
         // the last known state stays on screen instead of flashing an error.
@@ -103,7 +107,29 @@ export function SpecGrillPanel({
     }
   }
 
+  async function handleRetry() {
+    setRetrying(true);
+    setActionError(null);
+    try {
+      await retryFeatureGrill(projectId, featureId);
+      setEvents([]);
+      setJobStatus(null);
+    } catch (error) {
+      setActionError(
+        error instanceof Error ? error.message : "Failed to retry grill session",
+      );
+    } finally {
+      setRetrying(false);
+    }
+  }
+
   const stopped = jobStatus === "failed" || jobStatus === "cancelled";
+  // No active job means there's nothing to poll/cancel — either it never
+  // dispatched, or it stopped. Scoped to project_init (ADR 007): general
+  // re-grilling of normal features is a separate, still-open question.
+  // Gated on `polled` so the button doesn't flash in before the first poll
+  // has had a chance to find a running job.
+  const canRetry = polled && feature.featureType === "project_init" && jobStatus !== "running";
 
   return (
     <section className="rounded-card border border-rime bg-surface-01 p-6">
@@ -117,6 +143,16 @@ export function SpecGrillPanel({
             onClick={() => void handleCancel()}
           >
             {cancelling ? "Cancelling…" : "Cancel"}
+          </Button>
+        )}
+        {canRetry && (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={retrying}
+            onClick={() => void handleRetry()}
+          >
+            {retrying ? "Retrying…" : "Retry grill"}
           </Button>
         )}
       </div>

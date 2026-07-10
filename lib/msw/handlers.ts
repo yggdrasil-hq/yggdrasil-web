@@ -7,6 +7,7 @@ import {
   cancelMockFeatureGrill,
   createMockProject,
   deleteMockSecret,
+  deleteMockUserSecret,
   getMockFeature,
   getMockFeatureEvents,
   getMockFeatures,
@@ -15,15 +16,20 @@ import {
   getMockSecrets,
   getMockTest,
   getMockTests,
+  getMockUserSecrets,
   addMockTest,
+  hasFullModelBundle,
+  isMockModelConfigResolvable,
   mockInstallationRepos,
   mockInstallations,
   mockNotifications,
   mockOverview,
   removeMockProjectRepository,
+  retryMockFeatureGrill,
   updateMockFeature,
   updateMockTest,
   upsertMockSecret,
+  upsertMockUserSecret,
 } from "@/lib/msw/fixtures";
 import type { Feature, Test } from "@/lib/features/types";
 
@@ -60,6 +66,8 @@ export const handlers = [
         githubRepo: string;
         isPrimary: boolean;
       }>;
+      modelConfig?: { modelBaseUrl: string; modelApiKey: string; modelId: string };
+      saveModelConfigAsDefault?: boolean;
     };
 
     const name = body.name?.trim();
@@ -80,10 +88,24 @@ export const handlers = [
       );
     }
 
+    // ADR 007: a request bundle always resolves; otherwise the account
+    // default has to be complete.
+    if (!body.modelConfig && !hasFullModelBundle(getMockUserSecrets())) {
+      return HttpResponse.json(
+        {
+          error:
+            "Set a default model configuration in Account settings, or provide one for this project.",
+        },
+        { status: 400 },
+      );
+    }
+
     const { project } = createMockProject({
       name,
       description: body.description?.trim() ?? "",
       repositories,
+      modelConfig: body.modelConfig,
+      saveModelConfigAsDefault: body.saveModelConfigAsDefault,
     });
 
     return HttpResponse.json(project, { status: 201 });
@@ -219,6 +241,29 @@ export const handlers = [
     return new HttpResponse(null, { status: 204 });
   }),
 
+  http.get(apiUrl("/settings/secrets"), () => {
+    return HttpResponse.json(getMockUserSecrets());
+  }),
+
+  http.put(apiUrl("/settings/secrets"), async ({ request }) => {
+    const body = (await request.json()) as { key?: string; value?: string };
+    const key = body.key?.trim();
+    if (!key || body.value === undefined) {
+      return HttpResponse.json({ error: "Invalid input" }, { status: 400 });
+    }
+
+    const secret = upsertMockUserSecret(key, body.value);
+    return HttpResponse.json(secret);
+  }),
+
+  http.delete(apiUrl("/settings/secrets/:secretId"), ({ params }) => {
+    const deleted = deleteMockUserSecret(String(params.secretId));
+    if (!deleted) {
+      return HttpResponse.json({ error: "Secret not found" }, { status: 404 });
+    }
+    return new HttpResponse(null, { status: 204 });
+  }),
+
   http.get(apiUrl("/projects/:projectId/overview"), ({ params }) => {
     const project = getMockProject(String(params.projectId));
     if (!project) {
@@ -245,6 +290,16 @@ export const handlers = [
       return HttpResponse.json(
         { error: "Project initialization must complete before creating features" },
         { status: 409 },
+      );
+    }
+
+    if (!isMockModelConfigResolvable(project.id)) {
+      return HttpResponse.json(
+        {
+          error:
+            "No model configuration is set for this project or your account default. Set one in Account settings, or configure this project directly on its settings page.",
+        },
+        { status: 400 },
       );
     }
 
@@ -377,6 +432,42 @@ export const handlers = [
       return HttpResponse.json({ error: "No active grill session to cancel" }, { status: 409 });
     }
     return HttpResponse.json({});
+  }),
+
+  http.post(apiUrl("/projects/:projectId/features/:featureId/retry-grill"), ({ params }) => {
+    const projectId = String(params.projectId);
+    const featureId = String(params.featureId);
+
+    const result = retryMockFeatureGrill(projectId, featureId);
+    switch (result) {
+      case "not_found":
+        return HttpResponse.json({ error: "Feature not found" }, { status: 404 });
+      case "wrong_type":
+        return HttpResponse.json(
+          { error: "Retry is only available for project initialization" },
+          { status: 409 },
+        );
+      case "not_retryable":
+        return HttpResponse.json(
+          { error: "Feature is not in a retryable state" },
+          { status: 409 },
+        );
+      case "active_job":
+        return HttpResponse.json(
+          { error: "A grill session is already running for this feature" },
+          { status: 409 },
+        );
+      case "no_model_config":
+        return HttpResponse.json(
+          {
+            error:
+              "No model configuration is set for this project or your account default. Set one in Account settings, or configure this project directly on its settings page.",
+          },
+          { status: 400 },
+        );
+      case "ok":
+        return HttpResponse.json({}, { status: 201 });
+    }
   }),
 
   http.get(apiUrl("/projects/:projectId/tests"), ({ params }) => {

@@ -6,7 +6,7 @@ import { AppShell } from "@/components/app-shell/app-shell";
 import { StatusBadge } from "@/components/features/status-badge";
 import { SpecGrillPanel } from "@/components/features/spec-grill-panel";
 import { Button } from "@/components/ui/button";
-import { fetchFeature, fetchProject, updateFeature } from "@/lib/api";
+import { fetchFeature, fetchProject, retryFeatureGrill, updateFeature } from "@/lib/api";
 import type { Feature, Project } from "@/lib/features/types";
 import { appRoute } from "@/lib/config";
 
@@ -24,6 +24,7 @@ export function FeatureDetailClient({
   const [adrDraft, setAdrDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [retrying, setRetrying] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -107,6 +108,21 @@ export function FeatureDetailClient({
     }
   }
 
+  async function handleRetryGrill() {
+    setRetrying(true);
+    setError(null);
+    try {
+      await retryFeatureGrill(projectId, featureId);
+      const updated = await fetchFeature(projectId, featureId);
+      setFeature(updated);
+      setAdrDraft(updated.adrMarkdown ?? "");
+    } catch (retryError) {
+      setError(retryError instanceof Error ? retryError.message : "Failed to retry grill");
+    } finally {
+      setRetrying(false);
+    }
+  }
+
   if (error && !feature) {
     return (
       <div className="flex min-h-screen items-center justify-center text-mist">
@@ -142,6 +158,31 @@ export function FeatureDetailClient({
       <main className="flex-1 px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
         <div className="mx-auto max-w-content space-y-6">
           {error ? <p className="text-sm text-red-400">{error}</p> : null}
+
+          {feature.status === "failed" && (
+            <section className="rounded-card border border-red-500/30 bg-red-500/10 p-6">
+              <h2 className="text-base font-semibold text-frost">This feature failed</h2>
+              {feature.featureType === "project_init" ? (
+                <>
+                  <p className="mt-1 text-sm text-mist">
+                    Project initialization didn&apos;t complete. Check the project&apos;s model
+                    configuration, then retry.
+                  </p>
+                  <Button
+                    className="mt-4"
+                    disabled={retrying}
+                    onClick={() => void handleRetryGrill()}
+                  >
+                    {retrying ? "Retrying…" : "Retry grill"}
+                  </Button>
+                </>
+              ) : (
+                <p className="mt-1 text-sm text-mist">
+                  This run didn&apos;t complete successfully.
+                </p>
+              )}
+            </section>
+          )}
 
           {feature.status === "draft" && (
             <SpecGrillPanel

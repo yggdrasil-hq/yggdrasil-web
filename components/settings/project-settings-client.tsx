@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/app-shell/app-shell";
@@ -19,11 +20,14 @@ import {
 } from "@/components/ui/tooltip";
 import {
   addProjectRepository,
+  deleteProjectSecret,
   fetchProject,
   fetchProjectSecrets,
   removeProjectRepository,
+  upsertProjectSecret,
 } from "@/lib/api";
 import { ModelSecretField } from "@/components/settings/model-secret-field";
+import { appRoute } from "@/lib/config";
 import type {
   ModelSecretKey,
   Project,
@@ -83,6 +87,11 @@ export function ProjectSettingsClient({ projectId }: ProjectSettingsClientProps)
   const [confirmRemoveRepositoryId, setConfirmRemoveRepositoryId] = useState<string | null>(
     null,
   );
+  // Whether this project has its own model-config bundle or inherits the
+  // account default (ADR 007) — derived once from the loaded secrets, then
+  // toggled locally by "Switch to custom" before any field has been saved.
+  const [modelConfigMode, setModelConfigMode] = useState<"inherited" | "custom">("inherited");
+  const [reverting, setReverting] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -96,6 +105,7 @@ export function ProjectSettingsClient({ projectId }: ProjectSettingsClientProps)
         if (active) {
           setProject(projectData);
           setSecrets(secretsData);
+          setModelConfigMode(secretsData.length > 0 ? "custom" : "inherited");
         }
       } catch (loadError) {
         if (active) {
@@ -118,6 +128,24 @@ export function ProjectSettingsClient({ projectId }: ProjectSettingsClientProps)
       const withoutKey = current.filter((secret) => secret.key !== key);
       return metadata ? [...withoutKey, metadata] : withoutKey;
     });
+  }
+
+  async function handleRevertToDefault() {
+    setReverting(true);
+    setActionError(null);
+    try {
+      await Promise.all(secrets.map((secret) => deleteProjectSecret(projectId, secret.id)));
+      setSecrets([]);
+      setModelConfigMode("inherited");
+    } catch (revertError) {
+      setActionError(
+        revertError instanceof Error
+          ? revertError.message
+          : "Failed to revert to account default",
+      );
+    } finally {
+      setReverting(false);
+    }
   }
 
   const primaryRepository = project?.repositories.find((repo) => repo.isPrimary);
@@ -221,6 +249,18 @@ export function ProjectSettingsClient({ projectId }: ProjectSettingsClientProps)
                 <CardDescription>
                   The GitHub App installation no longer has access to one or more linked
                   repositories. Fix access on GitHub before dispatching new jobs.
+                </CardDescription>
+              </CardHeader>
+            </Card>
+          ) : null}
+
+          {project.modelConfigWarning ? (
+            <Card className="border-amber-500/30 bg-amber-500/10">
+              <CardHeader>
+                <CardTitle>Model configuration needs attention</CardTitle>
+                <CardDescription>
+                  A recent job couldn&apos;t resolve a model configuration for this project.
+                  Set one below, or check your account default.
                 </CardDescription>
               </CardHeader>
             </Card>
@@ -395,19 +435,68 @@ export function ProjectSettingsClient({ projectId }: ProjectSettingsClientProps)
               </CardDescription>
             </CardHeader>
             <div className="space-y-3 px-4 pb-4">
-              {MODEL_SECRET_FIELDS.map((field) => (
-                <ModelSecretField
-                  key={field.key}
-                  projectId={projectId}
-                  secretKey={field.key}
-                  label={field.label}
-                  description={field.description}
-                  placeholder={field.placeholder}
-                  masked={field.masked}
-                  metadata={secrets.find((secret) => secret.key === field.key) ?? null}
-                  onChange={(metadata) => handleSecretChange(field.key, metadata)}
-                />
-              ))}
+              {modelConfigMode === "inherited" ? (
+                <div className="space-y-3 rounded-md border border-dashed border-rime p-3">
+                  <p className="text-sm text-mist">
+                    Using your <span className="text-frost">account default</span> model
+                    configuration.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant="outline" size="sm" asChild>
+                      <Link href={appRoute("/settings")}>View account default</Link>
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setModelConfigMode("custom")}
+                    >
+                      Switch to custom
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <p className="text-sm text-mist">Custom configuration for this project.</p>
+                    {secrets.length > 0 ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={reverting}
+                        onClick={() => void handleRevertToDefault()}
+                      >
+                        {reverting ? "Reverting…" : "Revert to account default"}
+                      </Button>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setModelConfigMode("inherited")}
+                      >
+                        Cancel
+                      </Button>
+                    )}
+                  </div>
+                  {MODEL_SECRET_FIELDS.map((field) => (
+                    <ModelSecretField
+                      key={field.key}
+                      secretKey={field.key}
+                      label={field.label}
+                      description={field.description}
+                      placeholder={field.placeholder}
+                      masked={field.masked}
+                      metadata={secrets.find((secret) => secret.key === field.key) ?? null}
+                      onChange={(metadata) => handleSecretChange(field.key, metadata)}
+                      onSave={(key, value) => upsertProjectSecret(projectId, key, value)}
+                      onDelete={(secretId) => deleteProjectSecret(projectId, secretId)}
+                    />
+                  ))}
+                </>
+              )}
+              {actionError ? <p className="text-sm text-destructive">{actionError}</p> : null}
             </div>
           </Card>
 

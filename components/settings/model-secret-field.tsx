@@ -4,11 +4,9 @@ import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { deleteProjectSecret, upsertProjectSecret } from "@/lib/api";
 import type { ModelSecretKey, ProjectSecretMetadata } from "@/lib/features/types";
 
 interface ModelSecretFieldProps {
-  projectId: string;
   secretKey: ModelSecretKey;
   label: string;
   description: string;
@@ -16,12 +14,15 @@ interface ModelSecretFieldProps {
   masked?: boolean;
   metadata: ProjectSecretMetadata | null;
   onChange: (metadata: ProjectSecretMetadata | null) => void;
+  /** Persists a value for `secretKey` — bound to project- or account-scoped secrets by the caller. */
+  onSave: (key: ModelSecretKey, value: string) => Promise<ProjectSecretMetadata>;
+  /** Deletes the current value — bound to project- or account-scoped secrets by the caller. */
+  onDelete: (secretId: string) => Promise<void>;
 }
 
 type FieldMode = "idle" | "editing" | "confirm-clear";
 
 export function ModelSecretField({
-  projectId,
   secretKey,
   label,
   description,
@@ -29,6 +30,8 @@ export function ModelSecretField({
   masked,
   metadata,
   onChange,
+  onSave,
+  onDelete,
 }: ModelSecretFieldProps) {
   const [mode, setMode] = useState<FieldMode>("idle");
   const [value, setValue] = useState("");
@@ -56,7 +59,7 @@ export function ModelSecretField({
     setSaving(true);
     setError(null);
     try {
-      const updated = await upsertProjectSecret(projectId, secretKey, trimmed);
+      const updated = await onSave(secretKey, trimmed);
       onChange(updated);
       setMode("idle");
       setValue("");
@@ -73,7 +76,7 @@ export function ModelSecretField({
     setSaving(true);
     setError(null);
     try {
-      await deleteProjectSecret(projectId, metadata.id);
+      await onDelete(metadata.id);
       onChange(null);
       setMode("idle");
     } catch (clearError) {

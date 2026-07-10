@@ -15,6 +15,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { ModelSecretField } from "@/components/settings/model-secret-field";
 import {
   disconnectGithub,
   logout,
@@ -23,6 +24,40 @@ import {
 } from "@/lib/auth/api";
 import { AuthApiError } from "@/lib/auth/types";
 import { appRoute, oauthStartUrl } from "@/lib/config";
+import {
+  deleteAccountSecret,
+  fetchAccountSecrets,
+  upsertAccountSecret,
+} from "@/lib/api";
+import type { ModelSecretKey, ProjectSecretMetadata } from "@/lib/features/types";
+
+const MODEL_SECRET_FIELDS: Array<{
+  key: ModelSecretKey;
+  label: string;
+  description: string;
+  placeholder: string;
+  masked?: boolean;
+}> = [
+  {
+    key: "MODEL_BASE_URL",
+    label: "Model base URL",
+    description: "OpenAI-chat-completions-compatible endpoint the agent sends requests to.",
+    placeholder: "https://api.openai.com/v1",
+  },
+  {
+    key: "MODEL_API_KEY",
+    label: "Model API key",
+    description: "Sent as the bearer token on every request to the base URL above.",
+    placeholder: "sk-…",
+    masked: true,
+  },
+  {
+    key: "MODEL_ID",
+    label: "Model ID",
+    description: "Model name passed in each request, e.g. gpt-4.1 or claude-sonnet-5.",
+    placeholder: "gpt-4.1",
+  },
+];
 
 export function AccountSettingsClient() {
   const router = useRouter();
@@ -33,6 +68,7 @@ export function AccountSettingsClient() {
   const [newPassword, setNewPassword] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [accountSecrets, setAccountSecrets] = useState<ProjectSecretMetadata[]>([]);
 
   useEffect(() => {
     if (user) setDisplayName(user.displayName);
@@ -44,6 +80,27 @@ export function AccountSettingsClient() {
       setError("That GitHub account is already connected to another user.");
     }
   }, [searchParams]);
+
+  useEffect(() => {
+    let active = true;
+    fetchAccountSecrets()
+      .then((secrets) => {
+        if (active) setAccountSecrets(secrets);
+      })
+      .catch(() => {
+        // Non-fatal: the card just starts showing every field as "Not set".
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  function handleAccountSecretChange(key: ModelSecretKey, metadata: ProjectSecretMetadata | null) {
+    setAccountSecrets((current) => {
+      const withoutKey = current.filter((secret) => secret.key !== key);
+      return metadata ? [...withoutKey, metadata] : withoutKey;
+    });
+  }
 
   if (!user) return null;
 
@@ -172,6 +229,32 @@ export function AccountSettingsClient() {
                 Log out
               </Button>
             </div>
+          </div>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Default model configuration</CardTitle>
+            <CardDescription>
+              Used by any project that doesn&apos;t configure its own model. New projects use
+              this by default unless you set something different for them.
+            </CardDescription>
+          </CardHeader>
+          <div className="space-y-3 px-4 pb-4">
+            {MODEL_SECRET_FIELDS.map((field) => (
+              <ModelSecretField
+                key={field.key}
+                secretKey={field.key}
+                label={field.label}
+                description={field.description}
+                placeholder={field.placeholder}
+                masked={field.masked}
+                metadata={accountSecrets.find((secret) => secret.key === field.key) ?? null}
+                onChange={(metadata) => handleAccountSecretChange(field.key, metadata)}
+                onSave={(key, value) => upsertAccountSecret(key, value)}
+                onDelete={(secretId) => deleteAccountSecret(secretId)}
+              />
+            ))}
           </div>
         </Card>
 

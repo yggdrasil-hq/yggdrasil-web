@@ -17,6 +17,7 @@ export interface Project {
   status: ProjectStatus;
   installationId: string | null;
   githubAccessWarning: boolean;
+  modelConfigWarning: boolean;
   repositories: ProjectRepository[];
   repositoryRemovalBlockedReason: string | null;
 }
@@ -94,7 +95,8 @@ export type ActionQueueType =
   | "changes_requested"
   | "test_failure"
   | "failed_build"
-  | "fix_github_access";
+  | "fix_github_access"
+  | "fix_model_configuration";
 
 export interface ActionQueueItem {
   type: ActionQueueType;
@@ -152,6 +154,18 @@ export interface ProjectSecretMetadata {
   key: string;
   createdAt: string;
   updatedAt: string;
+}
+
+/** A full model-config bundle (ADR 007) — always all three together, never a subset. */
+export interface ModelConfigInput {
+  modelBaseUrl: string;
+  modelApiKey: string;
+  modelId: string;
+}
+
+export function hasFullModelConfigBundle(secrets: ProjectSecretMetadata[]): boolean {
+  const keys: ModelSecretKey[] = ["MODEL_BASE_URL", "MODEL_API_KEY", "MODEL_ID"];
+  return keys.every((key) => secrets.some((secret) => secret.key === key));
 }
 
 export interface Notification {

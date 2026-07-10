@@ -189,6 +189,7 @@ export const mockProject: Project = withRepositoryRemovalBlockedReason({
   status: "ready",
   installationId: "inst_mock_acme",
   githubAccessWarning: false,
+  modelConfigWarning: false,
   repositories: [
     {
       id: "repo_primary",
@@ -341,6 +342,8 @@ export function createMockProject(input: {
     githubRepo: string;
     isPrimary: boolean;
   }>;
+  modelConfig?: { modelBaseUrl: string; modelApiKey: string; modelId: string };
+  saveModelConfigAsDefault?: boolean;
 }): { project: Project; initFeature: Feature } {
   const id = `proj_${Date.now()}`;
   const slug = input.name
@@ -357,6 +360,7 @@ export function createMockProject(input: {
     status: "initializing",
     installationId: "inst_mock_acme",
     githubAccessWarning: false,
+    modelConfigWarning: false,
     repositories: input.repositories.map((repo, index) => ({
       id: `repo_${id}_${index}`,
       githubOwner: repo.githubOwner,
@@ -385,6 +389,18 @@ export function createMockProject(input: {
 
   addMockProject(project);
   addMockFeature(initFeature);
+
+  if (input.modelConfig) {
+    upsertMockSecret(project.id, "MODEL_BASE_URL", input.modelConfig.modelBaseUrl);
+    upsertMockSecret(project.id, "MODEL_API_KEY", input.modelConfig.modelApiKey);
+    upsertMockSecret(project.id, "MODEL_ID", input.modelConfig.modelId);
+
+    if (input.saveModelConfigAsDefault) {
+      upsertMockUserSecret("MODEL_BASE_URL", input.modelConfig.modelBaseUrl);
+      upsertMockUserSecret("MODEL_API_KEY", input.modelConfig.modelApiKey);
+      upsertMockUserSecret("MODEL_ID", input.modelConfig.modelId);
+    }
+  }
 
   return { project: withRepositoryRemovalBlockedReason(project), initFeature };
 }
@@ -554,6 +570,32 @@ export function cancelMockFeatureGrill(projectId: string, featureId: string): bo
   return true;
 }
 
+export type RetryMockFeatureGrillResult =
+  | "ok"
+  | "not_found"
+  | "wrong_type"
+  | "not_retryable"
+  | "active_job"
+  | "no_model_config";
+
+/** Mirrors the real retry-grill endpoint's preconditions (ADR 007). */
+export function retryMockFeatureGrill(
+  projectId: string,
+  featureId: string,
+): RetryMockFeatureGrillResult {
+  const feature = getMockFeature(projectId, featureId);
+  if (!feature) return "not_found";
+  if (feature.featureType !== "project_init") return "wrong_type";
+  if (feature.status !== "draft" && feature.status !== "failed") return "not_retryable";
+  if (mockJobStatuses[featureId] === "running") return "active_job";
+  if (!isMockModelConfigResolvable(projectId)) return "no_model_config";
+
+  delete mockJobEvents[featureId];
+  mockJobStatuses[featureId] = "pending";
+  updateMockFeature(projectId, featureId, { status: "draft", awaitingUserInput: false });
+  return "ok";
+}
+
 interface MockSecret {
   id: string;
   projectId: string;
@@ -617,6 +659,78 @@ export function deleteMockSecret(projectId: string, secretId: string): boolean {
     return false;
   }
   mockSecrets.splice(index, 1);
+  return true;
+}
+
+const MODEL_CONFIG_KEYS = ["MODEL_BASE_URL", "MODEL_API_KEY", "MODEL_ID"];
+
+export function hasFullModelBundle(secrets: ProjectSecretMetadata[]): boolean {
+  return MODEL_CONFIG_KEYS.every((key) => secrets.some((secret) => secret.key === key));
+}
+
+/** Mirrors the API's resolution (ADR 007): project bundle first, else the account default. */
+export function isMockModelConfigResolvable(projectId: string): boolean {
+  const projectSecrets = getMockSecrets(projectId);
+  if (hasFullModelBundle(projectSecrets)) {
+    return true;
+  }
+  if (projectSecrets.length > 0) {
+    // Partial project override — inconsistent state, not a fallback trigger.
+    return false;
+  }
+  return hasFullModelBundle(getMockUserSecrets());
+}
+
+interface MockUserSecret {
+  id: string;
+  key: string;
+  value: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Single mock account's default model configuration (ADR 007) — plaintext
+// `value` never leaves this module, same boundary as mockSecrets above.
+export const mockUserSecrets: MockUserSecret[] = [];
+
+function toUserSecretMetadata(secret: MockUserSecret): ProjectSecretMetadata {
+  return {
+    id: secret.id,
+    key: secret.key,
+    createdAt: secret.createdAt,
+    updatedAt: secret.updatedAt,
+  };
+}
+
+export function getMockUserSecrets(): ProjectSecretMetadata[] {
+  return [...mockUserSecrets].sort((a, b) => a.key.localeCompare(b.key)).map(toUserSecretMetadata);
+}
+
+export function upsertMockUserSecret(key: string, value: string): ProjectSecretMetadata {
+  const existing = mockUserSecrets.find((secret) => secret.key === key);
+  if (existing) {
+    existing.value = value;
+    existing.updatedAt = new Date().toISOString();
+    return toUserSecretMetadata(existing);
+  }
+
+  const created: MockUserSecret = {
+    id: `usersecret_${key}_${Date.now()}`,
+    key,
+    value,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  mockUserSecrets.push(created);
+  return toUserSecretMetadata(created);
+}
+
+export function deleteMockUserSecret(secretId: string): boolean {
+  const index = mockUserSecrets.findIndex((secret) => secret.id === secretId);
+  if (index === -1) {
+    return false;
+  }
+  mockUserSecrets.splice(index, 1);
   return true;
 }
 

@@ -3,6 +3,7 @@ import type {
   Feature,
   FeatureEventsResponse,
   GithubAccessResponse,
+  ModelConfigInput,
   Notification,
   NotificationsResponse,
   Project,
@@ -38,6 +39,10 @@ export interface CreateProjectInput {
   description?: string;
   installationId: string;
   repositories: CreateProjectRepository[];
+  /** Custom bundle for this project only (ADR 007). Omit to inherit the account default. */
+  modelConfig?: ModelConfigInput;
+  /** Also save `modelConfig` as the account default. Ignored if modelConfig is omitted. */
+  saveModelConfigAsDefault?: boolean;
 }
 
 export async function fetchGithubAccess(options?: { force?: boolean }): Promise<GithubAccessResponse> {
@@ -153,6 +158,39 @@ export async function deleteProjectSecret(
   }
 }
 
+/** Account-level default model configuration (ADR 007) — resolved as a fallback for projects with no override. */
+export async function fetchAccountSecrets(): Promise<ProjectSecretMetadata[]> {
+  const response = await fetch(apiUrl("/settings/secrets"), {
+    cache: "no-store",
+    credentials: "include",
+  });
+  return parseJson<ProjectSecretMetadata[]>(response);
+}
+
+export async function upsertAccountSecret(
+  key: string,
+  value: string,
+): Promise<ProjectSecretMetadata> {
+  const response = await fetch(apiUrl("/settings/secrets"), {
+    method: "PUT",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ key, value }),
+  });
+  return parseJson<ProjectSecretMetadata>(response);
+}
+
+export async function deleteAccountSecret(secretId: string): Promise<void> {
+  const response = await fetch(apiUrl(`/settings/secrets/${secretId}`), {
+    method: "DELETE",
+    credentials: "include",
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(body?.error ?? `API error: ${response.status} ${response.statusText}`);
+  }
+}
+
 export async function fetchProjectOverview(projectId: string): Promise<ProjectOverview> {
   const response = await fetch(apiUrl(`/projects/${projectId}/overview`), {
     cache: "no-store",
@@ -244,6 +282,15 @@ export async function cancelFeatureGrill(projectId: string, featureId: string): 
     method: "POST",
     credentials: "include",
   });
+  await parseJson<unknown>(response);
+}
+
+/** Re-dispatches spec_grill for a project_init feature stuck without a resolvable model config (ADR 007). */
+export async function retryFeatureGrill(projectId: string, featureId: string): Promise<void> {
+  const response = await fetch(
+    apiUrl(`/projects/${projectId}/features/${featureId}/retry-grill`),
+    { method: "POST", credentials: "include" },
+  );
   await parseJson<unknown>(response);
 }
 
