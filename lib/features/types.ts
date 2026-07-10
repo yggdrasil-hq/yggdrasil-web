@@ -34,6 +34,19 @@ export interface InstallationRepo {
   githubRepo: string;
 }
 
+/** A repo merged across every installation the user can access, for the flattened project-creation picker. */
+export interface FlattenedRepo extends InstallationRepo {
+  installationId: string;
+  accountLogin: string;
+}
+
+export interface GithubAccessResponse {
+  installations: GithubInstallation[];
+  repos: FlattenedRepo[];
+  reauthRequired: boolean;
+  stale: boolean;
+}
+
 export type FeatureType = "normal" | "project_init";
 
 export interface Feature {

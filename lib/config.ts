@@ -47,14 +47,19 @@ export function stripAppBasePath(pathname: string): string {
   return pathname;
 }
 
-export function oauthStartUrl(intent: "login" | "signup" | "link"): string {
-  return apiUrl(`/auth/github?intent=${intent}`);
+export function oauthStartUrl(intent: "login" | "signup" | "link", returnTo?: string): string {
+  const params = new URLSearchParams({ intent });
+  if (returnTo) {
+    params.set("return_to", returnTo);
+  }
+  return apiUrl(`/auth/github?${params.toString()}`);
 }
 
 export function githubInstallStartUrl(input: {
   name: string;
   description?: string;
   returnTo?: string;
+  targetId?: number;
 }): string {
   const url = new URL(apiUrl("/github/install"), window.location.origin);
   url.searchParams.set("name", input.name);
@@ -63,6 +68,9 @@ export function githubInstallStartUrl(input: {
   }
   if (input.returnTo) {
     url.searchParams.set("return_to", input.returnTo);
+  }
+  if (input.targetId) {
+    url.searchParams.set("target_id", String(input.targetId));
   }
   return url.toString();
 }

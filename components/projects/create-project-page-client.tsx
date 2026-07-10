@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { Search } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { HubLayout } from "@/components/app-shell/hub-layout";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,17 +14,22 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   createProject,
   fetchFeatures,
-  fetchGithubInstallations,
+  fetchGithubAccess,
   fetchInstallationConfigureUrl,
-  fetchInstallationRepos,
-  syncInstallationRepos,
 } from "@/lib/api";
-import type { GithubInstallation, InstallationRepo } from "@/lib/features/types";
-import { appRoute, githubInstallStartUrl } from "@/lib/config";
+import type { GithubAccessResponse } from "@/lib/features/types";
+import { appRoute, githubInstallStartUrl, oauthStartUrl } from "@/lib/config";
+import { filterRepos } from "@/lib/projects/filter-repos";
 
-type WizardStep = "details" | "github" | "repos";
+type WizardStep = "details" | "repos";
 
 export function CreateProjectPageClient() {
   const router = useRouter();
@@ -32,102 +38,73 @@ export function CreateProjectPageClient() {
   const [step, setStep] = useState<WizardStep>("details");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [installations, setInstallations] = useState<GithubInstallation[]>([]);
-  const [selectedInstallationId, setSelectedInstallationId] = useState<string | null>(null);
-  const [repos, setRepos] = useState<InstallationRepo[]>([]);
+  const [access, setAccess] = useState<GithubAccessResponse | null>(null);
+  const [hasAttemptedLoad, setHasAttemptedLoad] = useState(false);
+  const [search, setSearch] = useState("");
   const [primaryRepo, setPrimaryRepo] = useState("");
   const [subRepoNames, setSubRepoNames] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    const callbackStep = searchParams.get("step");
-    const installationId = searchParams.get("installation_id");
-    const draftName = searchParams.get("name");
-    const draftDescription = searchParams.get("description");
+  const loadAccess = useCallback((force = false) => {
+    setLoading(true);
+    setError(null);
+    return fetchGithubAccess({ force })
+      .then((data) => {
+        setAccess(data);
+      })
+      .catch((loadError) => {
+        setError(
+          loadError instanceof Error ? loadError.message : "Failed to load GitHub access",
+        );
+      })
+      .finally(() => setLoading(false));
+  }, []);
 
-    if (callbackStep === "repos" && installationId && draftName) {
+  // Land back here after a fresh install (?installation_id=...) or a GitHub
+  // reconnect (?github=connected), restoring the draft name/description.
+  useEffect(() => {
+    const draftName = searchParams.get("name");
+    const installationId = searchParams.get("installation_id");
+    const githubConnected = searchParams.get("github") === "connected";
+
+    if (draftName && (installationId || githubConnected)) {
       setName(draftName);
-      setDescription(draftDescription ?? "");
-      setSelectedInstallationId(installationId);
+      setDescription(searchParams.get("description") ?? "");
       setStep("repos");
     }
   }, [searchParams]);
 
   useEffect(() => {
-    if (step !== "github") return;
+    if (step !== "repos" || hasAttemptedLoad) return;
+    setHasAttemptedLoad(true);
+    void loadAccess();
+  }, [step, hasAttemptedLoad, loadAccess]);
 
-    let active = true;
-    setLoading(true);
-    setError(null);
-
-    void fetchGithubInstallations()
-      .then((data) => {
-        if (active) setInstallations(data);
-      })
-      .catch((loadError) => {
-        if (active) {
-          setError(
-            loadError instanceof Error ? loadError.message : "Failed to load installations",
-          );
-        }
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [step]);
-
+  // After a fresh install, pre-select a repo from the installation we just landed from.
   useEffect(() => {
-    if (step !== "repos" || !selectedInstallationId) return;
+    if (!access || primaryRepo) return;
+    const installationId = searchParams.get("installation_id");
+    if (!installationId) return;
+    const match = access.repos.find((repo) => repo.installationId === installationId);
+    if (match) setPrimaryRepo(match.fullName);
+  }, [access, primaryRepo, searchParams]);
 
-    let active = true;
-    setLoading(true);
-    setError(null);
-
-    void fetchInstallationRepos(selectedInstallationId)
-      .then((data) => {
-        if (!active) return;
-        setRepos(data);
-        if (data.length > 0 && !primaryRepo) {
-          setPrimaryRepo(data[0].fullName);
-        }
-      })
-      .catch((loadError) => {
-        if (active) {
-          setError(
-            loadError instanceof Error ? loadError.message : "Failed to load repositories",
-          );
-        }
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [step, selectedInstallationId, primaryRepo]);
-
-  function continueToGithub() {
+  function continueToRepos() {
     const trimmedName = name.trim();
     if (!trimmedName) {
       setError("Project name is required.");
       return;
     }
     setError(null);
-    setStep("github");
+    setStep("repos");
   }
 
-  function selectInstallation(installationId: string) {
-    setSelectedInstallationId(installationId);
-    setPrimaryRepo("");
-    setSubRepoNames([]);
-    setStep("repos");
+  function buildReturnTo() {
+    const params = new URLSearchParams({ name: name.trim() });
+    if (description.trim()) params.set("description", description.trim());
+    return `/projects/new?${params.toString()}`;
   }
 
   function startInstall() {
@@ -143,10 +120,13 @@ export function CreateProjectPageClient() {
     });
   }
 
-  async function openConfigureOnGitHub() {
-    if (!selectedInstallationId) return;
+  function reconnectGithub() {
+    window.location.href = oauthStartUrl("link", buildReturnTo());
+  }
+
+  async function openConfigureOnGitHub(installationId: string) {
     try {
-      const url = await fetchInstallationConfigureUrl(selectedInstallationId);
+      const url = await fetchInstallationConfigureUrl(installationId);
       window.open(url, "_blank", "noopener,noreferrer");
     } catch (configureError) {
       setError(
@@ -154,20 +134,6 @@ export function CreateProjectPageClient() {
           ? configureError.message
           : "Failed to open GitHub configuration",
       );
-    }
-  }
-
-  async function refreshRepos() {
-    if (!selectedInstallationId) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await syncInstallationRepos(selectedInstallationId);
-      setRepos(data);
-    } catch (syncError) {
-      setError(syncError instanceof Error ? syncError.message : "Failed to sync repositories");
-    } finally {
-      setLoading(false);
     }
   }
 
@@ -179,38 +145,42 @@ export function CreateProjectPageClient() {
     );
   }
 
+  function selectPrimaryRepo(fullName: string) {
+    setPrimaryRepo(fullName);
+    setSubRepoNames([]);
+  }
+
+  const repos = access?.repos ?? [];
+  const filteredRepos = filterRepos(repos, search);
+  const primaryRepoRecord = repos.find((repo) => repo.fullName === primaryRepo) ?? null;
+  const selectedInstallationId = primaryRepoRecord?.installationId ?? null;
+  const subRepoCandidates = selectedInstallationId
+    ? repos.filter(
+        (repo) => repo.installationId === selectedInstallationId && repo.fullName !== primaryRepo,
+      )
+    : [];
+
   async function handleCreate(event: React.FormEvent) {
     event.preventDefault();
-    if (!selectedInstallationId || !primaryRepo) {
+    if (!selectedInstallationId || !primaryRepoRecord) {
       setError("Select a primary repository.");
-      return;
-    }
-
-    const primary = repos.find((repo) => repo.fullName === primaryRepo);
-    if (!primary) {
-      setError("Selected primary repository is not available.");
       return;
     }
 
     const repositories = [
       {
-        githubOwner: primary.githubOwner,
-        githubRepo: primary.githubRepo,
+        githubOwner: primaryRepoRecord.githubOwner,
+        githubRepo: primaryRepoRecord.githubRepo,
         isPrimary: true,
       },
       ...subRepoNames
-        .filter((fullName) => fullName !== primaryRepo)
-        .map((fullName) => {
-          const repo = repos.find((entry) => entry.fullName === fullName);
-          return repo
-            ? {
-                githubOwner: repo.githubOwner,
-                githubRepo: repo.githubRepo,
-                isPrimary: false,
-              }
-            : null;
-        })
-        .filter((repo): repo is NonNullable<typeof repo> => repo !== null),
+        .map((fullName) => subRepoCandidates.find((repo) => repo.fullName === fullName))
+        .filter((repo): repo is NonNullable<typeof repo> => repo !== undefined)
+        .map((repo) => ({
+          githubOwner: repo.githubOwner,
+          githubRepo: repo.githubRepo,
+          isPrimary: false,
+        })),
     ];
 
     setSubmitting(true);
@@ -245,7 +215,7 @@ export function CreateProjectPageClient() {
   return (
     <HubLayout
       title="Create project"
-      description="Name your project, connect the Yggdrasil GitHub App, then pick repositories."
+      description="Name your project, then pick a repository Yggdrasil already has access to."
     >
       {step === "details" ? (
         <div className="space-y-6">
@@ -284,7 +254,7 @@ export function CreateProjectPageClient() {
           {error ? <p className="text-sm text-red-400">{error}</p> : null}
 
           <div className="flex flex-wrap gap-3">
-            <Button type="button" onClick={continueToGithub}>
+            <Button type="button" onClick={continueToRepos}>
               Continue
             </Button>
             <Button type="button" variant="ghost" asChild>
@@ -294,119 +264,134 @@ export function CreateProjectPageClient() {
         </div>
       ) : null}
 
-      {step === "github" ? (
-        <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">GitHub App access</CardTitle>
-              <CardDescription>
-                Install the Yggdrasil GitHub App on your org or account, or reuse an existing
-                installation.
-              </CardDescription>
-            </CardHeader>
-            <div className="space-y-4 px-4 pb-4">
-              <Button type="button" onClick={startInstall}>
-                Install on GitHub
-              </Button>
-              <p className="text-xs text-shadow">
-                Org installs may require an admin. If GitHub blocks you, ask your org admin to
-                install the app and grant repository access.
-              </p>
-
-              {loading ? <p className="text-sm text-mist">Loading installations…</p> : null}
-
-              {installations.length > 0 ? (
-                <ul className="space-y-2">
-                  {installations.map((installation) => (
-                    <li key={installation.id}>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="w-full justify-start"
-                        onClick={() => selectInstallation(installation.id)}
-                      >
-                        {installation.accountLogin}{" "}
-                        <span className="text-shadow">({installation.accountType})</span>
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-            </div>
-          </Card>
-
-          {error ? <p className="text-sm text-red-400">{error}</p> : null}
-
-          <Button type="button" variant="ghost" onClick={() => setStep("details")}>
-            Back
-          </Button>
-        </div>
-      ) : null}
-
       {step === "repos" ? (
         <form onSubmit={(event) => void handleCreate(event)} className="space-y-6">
           <Card>
             <CardHeader className="flex flex-row items-start justify-between gap-4">
               <div>
-                <CardTitle className="text-base">Select repositories</CardTitle>
+                <CardTitle className="text-base">Select a repository</CardTitle>
                 <CardDescription>
-                  Choose a primary repo and optional sub-repos from the GitHub App installation.
+                  Choose a primary repo from anywhere Yggdrasil already has access, and
+                  optionally add sub-repos from the same org.
                 </CardDescription>
               </div>
               <div className="flex gap-2">
-                <Button type="button" variant="outline" size="sm" onClick={() => void openConfigureOnGitHub()}>
-                  Configure on GitHub
-                </Button>
-                <Button type="button" variant="outline" size="sm" onClick={() => void refreshRepos()}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void loadAccess(true)}
+                >
                   Refresh
                 </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button type="button" variant="outline" size="sm">
+                      Add repository access
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    {(access?.installations ?? []).map((installation) => (
+                      <DropdownMenuItem
+                        key={installation.id}
+                        onClick={() => void openConfigureOnGitHub(installation.id)}
+                      >
+                        Add repos to {installation.accountLogin}
+                      </DropdownMenuItem>
+                    ))}
+                    <DropdownMenuItem onClick={startInstall}>
+                      Install on a new org or account
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </CardHeader>
             <div className="space-y-4 px-4 pb-4">
-              {loading ? <p className="text-sm text-mist">Loading repositories…</p> : null}
-              {repos.length === 0 && !loading ? (
+              {access?.reauthRequired ? (
+                <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-200">
+                  <p className="mb-2">
+                    Your GitHub connection needs to be reconnected before we can check your
+                    repositories.
+                  </p>
+                  <Button type="button" size="sm" onClick={reconnectGithub}>
+                    Reconnect GitHub
+                  </Button>
+                </div>
+              ) : null}
+
+              {access?.stale ? (
+                <div className="flex items-center justify-between gap-3 rounded-md border border-rime bg-surface-02 p-3 text-sm text-mist">
+                  <span>Showing your last known repositories — couldn&apos;t reach GitHub just now.</span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => void loadAccess(true)}
+                  >
+                    Retry
+                  </Button>
+                </div>
+              ) : null}
+
+              {loading ? <p className="text-sm text-mist">Loading your repositories…</p> : null}
+
+              {!loading && repos.length === 0 && !access?.reauthRequired ? (
                 <p className="text-sm text-shadow">
-                  No repositories granted yet. Use Configure on GitHub to add repos to this
-                  installation.
+                  No repositories found yet. Use &ldquo;Add repository access&rdquo; above to
+                  connect GitHub.
                 </p>
               ) : null}
 
               {repos.length > 0 ? (
                 <>
-                  <div className="space-y-2">
-                    <p className="text-sm font-medium text-frost">Primary repository</p>
-                    <div className="space-y-2">
-                      {repos.map((repo) => (
-                        <label key={repo.fullName} className="flex items-center gap-2 text-sm">
-                          <input
-                            type="radio"
-                            name="primary-repo"
-                            value={repo.fullName}
-                            checked={primaryRepo === repo.fullName}
-                            onChange={() => setPrimaryRepo(repo.fullName)}
-                          />
-                          {repo.fullName}
-                        </label>
-                      ))}
-                    </div>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-shadow" />
+                    <Input
+                      value={search}
+                      onChange={(event) => setSearch(event.target.value)}
+                      placeholder="Search repositories…"
+                      className="pl-9"
+                    />
                   </div>
 
-                  {repos.length > 1 ? (
+                  <div className="max-h-80 space-y-2 overflow-y-auto">
+                    {filteredRepos.map((repo) => (
+                      <label
+                        key={`${repo.installationId}/${repo.fullName}`}
+                        className="flex items-center gap-2 text-sm"
+                      >
+                        <input
+                          type="radio"
+                          name="primary-repo"
+                          value={repo.fullName}
+                          checked={primaryRepo === repo.fullName}
+                          onChange={() => selectPrimaryRepo(repo.fullName)}
+                        />
+                        <span>{repo.fullName}</span>
+                        <span className="text-xs text-shadow">({repo.accountLogin})</span>
+                      </label>
+                    ))}
+                    {filteredRepos.length === 0 ? (
+                      <p className="text-sm text-shadow">No repositories match your search.</p>
+                    ) : null}
+                  </div>
+
+                  {subRepoCandidates.length > 0 ? (
                     <div className="space-y-2">
-                      <p className="text-sm font-medium text-frost">Sub-repositories</p>
+                      <p className="text-sm font-medium text-frost">
+                        Also include from {primaryRepoRecord?.accountLogin}
+                      </p>
                       <div className="space-y-2">
-                        {repos
-                          .filter((repo) => repo.fullName !== primaryRepo)
-                          .map((repo) => (
-                            <label key={repo.fullName} className="flex items-center gap-2 text-sm">
-                              <input
-                                type="checkbox"
-                                checked={subRepoNames.includes(repo.fullName)}
-                                onChange={() => toggleSubRepo(repo.fullName)}
-                              />
-                              {repo.fullName}
-                            </label>
-                          ))}
+                        {subRepoCandidates.map((repo) => (
+                          <label key={repo.fullName} className="flex items-center gap-2 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={subRepoNames.includes(repo.fullName)}
+                              onChange={() => toggleSubRepo(repo.fullName)}
+                            />
+                            {repo.fullName}
+                          </label>
+                        ))}
                       </div>
                     </div>
                   ) : null}
@@ -418,10 +403,10 @@ export function CreateProjectPageClient() {
           {error ? <p className="text-sm text-red-400">{error}</p> : null}
 
           <div className="flex flex-wrap gap-3">
-            <Button type="submit" disabled={submitting || repos.length === 0}>
+            <Button type="submit" disabled={submitting || !primaryRepo}>
               {submitting ? "Creating…" : "Create project"}
             </Button>
-            <Button type="button" variant="ghost" onClick={() => setStep("github")}>
+            <Button type="button" variant="ghost" onClick={() => setStep("details")}>
               Back
             </Button>
           </div>

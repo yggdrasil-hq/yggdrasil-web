@@ -2,8 +2,7 @@ import { apiUrl } from "@/lib/config";
 import type {
   Feature,
   FeatureEventsResponse,
-  GithubInstallation,
-  InstallationRepo,
+  GithubAccessResponse,
   Notification,
   NotificationsResponse,
   Project,
@@ -41,22 +40,13 @@ export interface CreateProjectInput {
   repositories: CreateProjectRepository[];
 }
 
-export async function fetchGithubInstallations(): Promise<GithubInstallation[]> {
-  const response = await fetch(apiUrl("/github/installations"), {
+export async function fetchGithubAccess(options?: { force?: boolean }): Promise<GithubAccessResponse> {
+  const query = options?.force ? "?refresh=1" : "";
+  const response = await fetch(apiUrl(`/github/installations${query}`), {
     cache: "no-store",
     credentials: "include",
   });
-  return parseJson<GithubInstallation[]>(response);
-}
-
-export async function fetchInstallationRepos(
-  installationId: string,
-): Promise<InstallationRepo[]> {
-  const response = await fetch(apiUrl(`/github/installations/${installationId}/repos`), {
-    cache: "no-store",
-    credentials: "include",
-  });
-  return parseJson<InstallationRepo[]>(response);
+  return parseJson<GithubAccessResponse>(response);
 }
 
 export async function fetchInstallationConfigureUrl(
@@ -68,16 +58,6 @@ export async function fetchInstallationConfigureUrl(
   );
   const data = await parseJson<{ url: string }>(response);
   return data.url;
-}
-
-export async function syncInstallationRepos(
-  installationId: string,
-): Promise<InstallationRepo[]> {
-  const response = await fetch(apiUrl(`/github/installations/${installationId}/sync`), {
-    method: "POST",
-    credentials: "include",
-  });
-  return parseJson<InstallationRepo[]>(response);
 }
 
 export async function createProject(input: CreateProjectInput): Promise<Project> {
