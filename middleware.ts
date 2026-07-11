@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { appPath, internalApiUrl } from "@/lib/config";
 
-const PUBLIC_PATHS = ["/login", "/signup"];
+const PUBLIC_PATHS = ["/login"];
 const ONBOARDING_PATH = "/onboarding/confirm-username";
 
 function stripBasePath(pathname: string, basePath: string): string {

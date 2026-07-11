@@ -5,9 +5,7 @@ export interface AuthUser {
   username: string;
   displayName: string;
   onboardingState: OnboardingState;
-  hasPassword: boolean;
-  githubConnected: boolean;
-  githubLogin: string | null;
+  githubLogin: string;
 }
 
 export interface AuthResponse {

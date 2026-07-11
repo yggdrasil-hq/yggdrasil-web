@@ -46,30 +46,6 @@ export async function fetchCurrentUser(): Promise<AuthUser | null> {
   return data.user;
 }
 
-export async function signup(input: {
-  username: string;
-  password: string;
-  displayName?: string;
-}): Promise<AuthUser> {
-  const data = await authFetch<AuthResponse>("/auth/signup", {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
-  return data.user;
-}
-
-export async function login(input: {
-  username: string;
-  password: string;
-  rememberMe: boolean;
-}): Promise<AuthUser> {
-  const data = await authFetch<AuthResponse>("/auth/login", {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
-  return data.user;
-}
-
 export async function logout(): Promise<void> {
   await authFetch<void>("/auth/logout", { method: "POST" });
 }
@@ -89,23 +65,6 @@ export async function updateDisplayName(displayName: string): Promise<AuthUser> 
   const data = await authFetch<AuthResponse>("/settings/account", {
     method: "PATCH",
     body: JSON.stringify({ displayName }),
-  });
-  return data.user;
-}
-
-export async function setOrChangePassword(input: {
-  currentPassword?: string;
-  newPassword: string;
-}): Promise<void> {
-  await authFetch<{ ok: boolean }>("/settings/password", {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
-}
-
-export async function disconnectGithub(): Promise<AuthUser> {
-  const data = await authFetch<AuthResponse>("/settings/github", {
-    method: "DELETE",
   });
   return data.user;
 }

@@ -154,7 +154,7 @@ export function CreateProjectPageClient() {
   }
 
   function reconnectGithub() {
-    window.location.href = oauthStartUrl("link", buildReturnTo());
+    window.location.href = oauthStartUrl(buildReturnTo());
   }
 
   async function openConfigureOnGitHub(installationId: string) {

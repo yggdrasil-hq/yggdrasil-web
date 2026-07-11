@@ -47,11 +47,11 @@ export function stripAppBasePath(pathname: string): string {
   return pathname;
 }
 
-export function oauthStartUrl(intent: "login" | "signup" | "link", returnTo?: string): string {
-  const params = new URLSearchParams({ intent });
-  if (returnTo) {
-    params.set("return_to", returnTo);
+export function oauthStartUrl(returnTo?: string): string {
+  if (!returnTo) {
+    return apiUrl("/auth/github");
   }
+  const params = new URLSearchParams({ return_to: returnTo });
   return apiUrl(`/auth/github?${params.toString()}`);
 }
 

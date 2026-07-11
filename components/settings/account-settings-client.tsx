@@ -1,9 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { PasswordRecoveryWarning } from "@/components/auth/password-warning";
 import { UserAvatar } from "@/components/auth/user-avatar";
 import { HubLayout } from "@/components/app-shell/hub-layout";
 import { useAuth } from "@/components/providers/auth-provider";
@@ -16,14 +15,9 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ModelSecretField } from "@/components/settings/model-secret-field";
-import {
-  disconnectGithub,
-  logout,
-  setOrChangePassword,
-  updateDisplayName,
-} from "@/lib/auth/api";
+import { logout, updateDisplayName } from "@/lib/auth/api";
 import { AuthApiError } from "@/lib/auth/types";
-import { appRoute, oauthStartUrl } from "@/lib/config";
+import { appRoute } from "@/lib/config";
 import {
   deleteAccountSecret,
   fetchAccountSecrets,
@@ -61,11 +55,8 @@ const MODEL_SECRET_FIELDS: Array<{
 
 export function AccountSettingsClient() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const { user, setUser } = useAuth();
   const [displayName, setDisplayName] = useState("");
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [accountSecrets, setAccountSecrets] = useState<ProjectSecretMetadata[]>([]);
@@ -73,13 +64,6 @@ export function AccountSettingsClient() {
   useEffect(() => {
     if (user) setDisplayName(user.displayName);
   }, [user]);
-
-  useEffect(() => {
-    const err = searchParams.get("error");
-    if (err === "github_already_linked") {
-      setError("That GitHub account is already connected to another user.");
-    }
-  }, [searchParams]);
 
   useEffect(() => {
     let active = true;
@@ -116,36 +100,6 @@ export function AccountSettingsClient() {
     }
   }
 
-  async function savePassword() {
-    if (!user) return;
-    setError(null);
-    setMessage(null);
-    try {
-      await setOrChangePassword({
-        currentPassword: user.hasPassword ? currentPassword : undefined,
-        newPassword,
-      });
-      setCurrentPassword("");
-      setNewPassword("");
-      setMessage(user.hasPassword ? "Password changed." : "Password set.");
-      setUser({ ...user, hasPassword: true });
-    } catch (err) {
-      setError(err instanceof AuthApiError ? err.message : "Password update failed");
-    }
-  }
-
-  async function handleDisconnectGithub() {
-    setError(null);
-    setMessage(null);
-    try {
-      const updated = await disconnectGithub();
-      setUser(updated);
-      setMessage("GitHub disconnected.");
-    } catch (err) {
-      setError(err instanceof AuthApiError ? err.message : "Disconnect failed");
-    }
-  }
-
   async function handleLogout() {
     await logout();
     setUser(null);
@@ -155,7 +109,7 @@ export function AccountSettingsClient() {
   return (
     <HubLayout
       title="Account"
-      description="Profile, security, and connections."
+      description="Profile and default model configuration."
       className="max-w-2xl"
     >
       <div className="space-y-6">
@@ -167,6 +121,8 @@ export function AccountSettingsClient() {
             <CardTitle>Profile</CardTitle>
             <CardDescription>
               Username <span className="text-frost">@{user.username}</span> is permanent
+              &middot; signed in with GitHub as{" "}
+              <span className="text-frost">@{user.githubLogin}</span>
             </CardDescription>
           </CardHeader>
           <div className="flex items-center gap-4 px-4 pb-4">
@@ -185,50 +141,10 @@ export function AccountSettingsClient() {
               <Button onClick={() => void saveProfile()}>Save profile</Button>
             </div>
           </div>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Security</CardTitle>
-            <CardDescription>
-              {user.hasPassword ? "Change your password" : "Set a password for backup login"}
-            </CardDescription>
-          </CardHeader>
-          <div className="space-y-4 px-4 pb-4">
-            {!user.hasPassword ? <PasswordRecoveryWarning /> : null}
-            {user.hasPassword ? (
-              <div className="space-y-2">
-                <label htmlFor="currentPassword" className="text-sm text-mist">
-                  Current password
-                </label>
-                <Input
-                  id="currentPassword"
-                  type="password"
-                  value={currentPassword}
-                  onChange={(e) => setCurrentPassword(e.target.value)}
-                />
-              </div>
-            ) : null}
-            <div className="space-y-2">
-              <label htmlFor="newPassword" className="text-sm text-mist">
-                {user.hasPassword ? "New password" : "Password"}
-              </label>
-              <Input
-                id="newPassword"
-                type="password"
-                minLength={8}
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-              />
-            </div>
-            <Button onClick={() => void savePassword()} disabled={!newPassword}>
-              {user.hasPassword ? "Change password" : "Set password"}
+          <div className="border-t border-rime-soft px-4 py-4">
+            <Button variant="outline" onClick={() => void handleLogout()}>
+              Log out
             </Button>
-            <div className="border-t border-rime-soft pt-4">
-              <Button variant="outline" onClick={() => void handleLogout()}>
-                Log out
-              </Button>
-            </div>
           </div>
         </Card>
 
@@ -255,49 +171,6 @@ export function AccountSettingsClient() {
                 onDelete={(secretId) => deleteAccountSecret(secretId)}
               />
             ))}
-          </div>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Connections</CardTitle>
-            <CardDescription>
-              Link GitHub for sign-in convenience. Repository access is configured per project
-              via the GitHub App install flow.
-            </CardDescription>
-          </CardHeader>
-          <div className="space-y-4 px-4 pb-4">
-            {user.githubConnected ? (
-              <>
-                <p className="text-sm text-mist">
-                  Connected as{" "}
-                  <span className="text-frost">@{user.githubLogin ?? "github"}</span>
-                </p>
-                <Button
-                  variant="outline"
-                  disabled={!user.hasPassword}
-                  onClick={() => void handleDisconnectGithub()}
-                >
-                  Disconnect GitHub
-                </Button>
-                {!user.hasPassword ? (
-                  <p className="text-xs text-shadow">
-                    Set a password before you can disconnect GitHub.
-                  </p>
-                ) : null}
-              </>
-            ) : (
-              <>
-                <p className="text-sm text-mist">GitHub is not connected.</p>
-                <Button asChild variant="outline">
-                  <a href={oauthStartUrl("link")}>Connect GitHub</a>
-                </Button>
-              </>
-            )}
-            <p className="text-xs text-shadow">
-              To grant repo access, install the Yggdrasil GitHub App when creating or configuring
-              a project.
-            </p>
           </div>
         </Card>
 
