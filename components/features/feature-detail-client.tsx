@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { AppShell } from "@/components/app-shell/app-shell";
 import { StatusBadge } from "@/components/features/status-badge";
 import { SpecGrillPanel } from "@/components/features/spec-grill-panel";
+import { Markdown } from "@/components/markdown";
 import { Button } from "@/components/ui/button";
 import { fetchFeature, fetchProject, retryFeatureGrill, updateFeature } from "@/lib/api";
 import type { Feature, Project } from "@/lib/features/types";
@@ -228,9 +229,10 @@ export function FeatureDetailClient({
                   readOnly={feature.adrApproved}
                 />
               ) : feature.adrMarkdown ? (
-                <pre className="mt-4 overflow-x-auto whitespace-pre-wrap rounded-md bg-surface-02 p-4 text-sm text-mist">
-                  {feature.adrMarkdown}
-                </pre>
+                <Markdown
+                  content={feature.adrMarkdown}
+                  className="mt-4 rounded-md bg-surface-02 p-4 text-mist"
+                />
               ) : (
                 <p className="mt-4 text-sm text-shadow">ADR not generated yet.</p>
               )}

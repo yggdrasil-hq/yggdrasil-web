@@ -119,7 +119,8 @@ export type FeatureEventType =
   | "ask_user"
   | "submit_adr"
   | "run_failed"
-  | "run_cancelled";
+  | "run_cancelled"
+  | "user_message";
 
 export interface FeatureEvent {
   id: string;

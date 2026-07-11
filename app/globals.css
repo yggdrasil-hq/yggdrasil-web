@@ -47,3 +47,144 @@
     @apply text-foreground font-sans antialiased;
   }
 }
+
+@layer components {
+  .markdown-body > :first-child {
+    margin-top: 0;
+  }
+  .markdown-body > :last-child {
+    margin-bottom: 0;
+  }
+  .markdown-body p,
+  .markdown-body ul,
+  .markdown-body ol,
+  .markdown-body pre,
+  .markdown-body table,
+  .markdown-body blockquote {
+    margin-top: 0.75em;
+    margin-bottom: 0.75em;
+  }
+  .markdown-body h1,
+  .markdown-body h2,
+  .markdown-body h3,
+  .markdown-body h4 {
+    margin-top: 1.25em;
+    margin-bottom: 0.5em;
+    font-weight: 600;
+    color: var(--frost);
+  }
+  .markdown-body h1 {
+    font-size: 1.25em;
+  }
+  .markdown-body h2 {
+    font-size: 1.15em;
+  }
+  .markdown-body h3,
+  .markdown-body h4 {
+    font-size: 1.05em;
+  }
+  .markdown-body ul,
+  .markdown-body ol {
+    padding-left: 1.25em;
+  }
+  .markdown-body ul {
+    list-style: disc;
+  }
+  .markdown-body ol {
+    list-style: decimal;
+  }
+  .markdown-body li + li {
+    margin-top: 0.25em;
+  }
+  .markdown-body a {
+    color: var(--aurora);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .markdown-body strong {
+    color: var(--frost);
+    font-weight: 600;
+  }
+  .markdown-body blockquote {
+    border-left: 2px solid var(--rime);
+    padding-left: 0.75em;
+    color: var(--mist);
+  }
+  .markdown-body code:not(pre code) {
+    background: var(--surface-03);
+    border-radius: 4px;
+    padding: 0.1em 0.35em;
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+  }
+  .markdown-body pre {
+    background: var(--surface-03);
+    border-radius: 8px;
+    padding: 0.75em 1em;
+    overflow-x: auto;
+  }
+  .markdown-body pre code {
+    background: transparent;
+    padding: 0;
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+  }
+  .markdown-body table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .markdown-body th,
+  .markdown-body td {
+    border: 1px solid var(--rime);
+    padding: 0.4em 0.6em;
+    text-align: left;
+  }
+  .markdown-body th {
+    color: var(--frost);
+    background: var(--surface-03);
+  }
+
+  /* rehype-highlight theme, mapped to the design tokens above rather than a
+     stock highlight.js theme's own palette. */
+  .hljs {
+    color: var(--frost);
+    background: transparent;
+  }
+  .hljs-comment,
+  .hljs-quote {
+    color: var(--shadow);
+    font-style: italic;
+  }
+  .hljs-keyword,
+  .hljs-selector-tag,
+  .hljs-tag,
+  .hljs-name {
+    color: var(--aurora);
+  }
+  .hljs-string,
+  .hljs-attr,
+  .hljs-regexp,
+  .hljs-addition {
+    color: var(--bifrost);
+  }
+  .hljs-title,
+  .hljs-section,
+  .hljs-built_in,
+  .hljs-type {
+    color: var(--frostfire);
+  }
+  .hljs-number,
+  .hljs-literal,
+  .hljs-symbol {
+    color: var(--frostfire);
+  }
+  .hljs-deletion {
+    color: #c84a52;
+  }
+  .hljs-emphasis {
+    font-style: italic;
+  }
+  .hljs-strong {
+    font-weight: 600;
+  }
+}

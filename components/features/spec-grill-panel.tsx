@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Markdown } from "@/components/markdown";
 import {
   cancelFeatureGrill,
   fetchFeature,
@@ -158,13 +159,16 @@ export function SpecGrillPanel({
       </div>
 
       <div className="mt-4 max-h-96 space-y-3 overflow-y-auto">
-        {events.length === 0 ? (
-          <p className="text-sm text-shadow">
-            {jobStatus ? "Waiting for the agent to start…" : "Starting the grill session…"}
-          </p>
-        ) : (
-          events.map((event) => <GrillEvent key={event.id} event={event} />)
+        {events.length === 0 && jobStatus === null && (
+          <p className="text-sm text-shadow">Starting the grill session…</p>
         )}
+        {events.length === 0 && jobStatus !== null && jobStatus !== "running" && (
+          <p className="text-sm text-shadow">Waiting for the agent to start…</p>
+        )}
+        {events.map((event) => (
+          <GrillEvent key={event.id} event={event} />
+        ))}
+        {jobStatus === "running" && !feature.awaitingUserInput && <ProcessingBubble />}
       </div>
 
       {feature.awaitingUserInput && jobStatus === "running" && (
@@ -204,23 +208,29 @@ export function SpecGrillPanel({
 function GrillEvent({ event }: { event: FeatureEvent }) {
   switch (event.type) {
     case "ask_user":
-      return <GrillBubble label="Agent">{event.question}</GrillBubble>;
+      return <GrillBubble label="Agent" content={event.question ?? ""} />;
     case "agent_text":
-      return <GrillBubble label="Agent">{event.message}</GrillBubble>;
+      return <GrillBubble label="Agent" content={event.message ?? ""} />;
     case "submit_adr":
-      return <GrillBubble label="Agent">Submitted the ADR for review.</GrillBubble>;
+      return <GrillBubble label="Agent" content="Submitted the ADR for review." />;
     case "run_failed":
       return (
-        <GrillBubble label="System" tone="error">
-          {event.message ?? "The grill session failed."}
-        </GrillBubble>
+        <GrillBubble
+          label="System"
+          tone="error"
+          content={event.message ?? "The grill session failed."}
+        />
       );
     case "run_cancelled":
       return (
-        <GrillBubble label="System" tone="error">
-          {event.message ?? "The grill session was cancelled."}
-        </GrillBubble>
+        <GrillBubble
+          label="System"
+          tone="error"
+          content={event.message ?? "The grill session was cancelled."}
+        />
       );
+    case "user_message":
+      return <GrillBubble label="You" tone="user" content={event.message ?? ""} />;
     default:
       return null;
   }
@@ -229,18 +239,37 @@ function GrillEvent({ event }: { event: FeatureEvent }) {
 function GrillBubble({
   label,
   tone = "default",
-  children,
+  content,
 }: {
   label: string;
-  tone?: "default" | "error";
-  children: React.ReactNode;
+  tone?: "default" | "error" | "user";
+  content: string;
 }) {
   return (
-    <div className="rounded-md border border-rime-soft bg-surface-02 p-3">
-      <p className={`text-xs font-medium ${tone === "error" ? "text-red-400" : "text-shadow"}`}>
+    <div
+      className={`rounded-md border p-3 ${
+        tone === "user" ? "border-rime bg-surface-03" : "border-rime-soft bg-surface-02"
+      }`}
+    >
+      <p
+        className={`text-xs font-medium ${tone === "error" ? "text-red-400" : "text-shadow"}`}
+      >
         {label}
       </p>
-      <p className="mt-1 whitespace-pre-wrap text-sm text-frost">{children}</p>
+      <Markdown content={content} className="mt-1" />
+    </div>
+  );
+}
+
+function ProcessingBubble() {
+  return (
+    <div className="rounded-md border border-rime-soft bg-surface-02 p-3">
+      <p className="text-xs font-medium text-shadow">Agent</p>
+      <span className="mt-1 inline-flex gap-1">
+        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-mist [animation-delay:-0.3s]" />
+        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-mist [animation-delay:-0.15s]" />
+        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-mist" />
+      </span>
     </div>
   );
 }
