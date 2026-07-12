@@ -133,6 +133,7 @@ export interface FeatureEvent {
 
 export interface FeatureEventsResponse {
   jobStatus: JobStatus | null;
+  lastError: string | null;
   events: FeatureEvent[];
 }
 

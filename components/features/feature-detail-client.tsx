@@ -7,7 +7,13 @@ import { StatusBadge } from "@/components/features/status-badge";
 import { SpecGrillPanel } from "@/components/features/spec-grill-panel";
 import { Markdown } from "@/components/markdown";
 import { Button } from "@/components/ui/button";
-import { fetchFeature, fetchProject, retryFeatureGrill, updateFeature } from "@/lib/api";
+import {
+  fetchFeature,
+  fetchFeatureEvents,
+  fetchProject,
+  retryFeatureGrill,
+  updateFeature,
+} from "@/lib/api";
 import type { Feature, Project } from "@/lib/features/types";
 import { appRoute } from "@/lib/config";
 
@@ -26,6 +32,7 @@ export function FeatureDetailClient({
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  const [lastError, setLastError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -56,6 +63,27 @@ export function FeatureDetailClient({
       active = false;
     };
   }, [projectId, featureId]);
+
+  // Surfaces the actual failure reason (e.g. a model config error) on the
+  // failed banner instead of only generic copy — jobs.last_error was
+  // previously written but never read anywhere (ADR 012).
+  useEffect(() => {
+    if (feature?.status !== "failed") {
+      setLastError(null);
+      return;
+    }
+    let active = true;
+    fetchFeatureEvents(projectId, featureId)
+      .then((data) => {
+        if (active) setLastError(data.lastError);
+      })
+      .catch(() => {
+        // Best-effort: the generic banner copy still renders without this.
+      });
+    return () => {
+      active = false;
+    };
+  }, [projectId, featureId, feature?.status]);
 
   async function handleSaveAdr() {
     setSaving(true);
@@ -169,6 +197,11 @@ export function FeatureDetailClient({
                     Project initialization didn&apos;t complete. Check the project&apos;s model
                     configuration, then retry.
                   </p>
+                  {lastError && (
+                    <p className="mt-2 rounded-md bg-surface-02 p-3 font-mono text-xs text-red-400">
+                      {lastError}
+                    </p>
+                  )}
                   <Button
                     className="mt-4"
                     disabled={retrying}

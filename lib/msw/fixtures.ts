@@ -245,6 +245,8 @@ export const mockJobStatuses: Record<string, JobStatus> = {
   feat_001: "running",
 };
 
+export const mockLastErrors: Record<string, string> = {};
+
 export const mockTests: Test[] = [
   {
     id: "test_001",
@@ -528,6 +530,7 @@ export function updateMockFeature(
 export function getMockFeatureEvents(featureId: string): FeatureEventsResponse {
   return {
     jobStatus: mockJobStatuses[featureId] ?? null,
+    lastError: mockLastErrors[featureId] ?? null,
     events: mockJobEvents[featureId] ?? [],
   };
 }
@@ -591,6 +594,7 @@ export function retryMockFeatureGrill(
   if (!isMockModelConfigResolvable(projectId)) return "no_model_config";
 
   delete mockJobEvents[featureId];
+  delete mockLastErrors[featureId];
   mockJobStatuses[featureId] = "pending";
   updateMockFeature(projectId, featureId, { status: "draft", awaitingUserInput: false });
   return "ok";
