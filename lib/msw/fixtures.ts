@@ -236,6 +236,9 @@ export const mockJobEvents: Record<string, FeatureEvent[]> = {
         "Should GitHub OAuth support linking to an existing email/password account, or always create a new user?",
       markdown: null,
       message: null,
+      status: null,
+      prUrl: null,
+      summary: null,
       createdAt: hours(3),
     },
   ],
@@ -545,6 +548,9 @@ export function addMockFeatureReply(projectId: string, featureId: string, conten
     question: null,
     markdown: adrMarkdown,
     message: null,
+    status: null,
+    prUrl: null,
+    summary: null,
     createdAt: new Date().toISOString(),
   });
   mockJobStatuses[featureId] = "completed";
@@ -566,6 +572,9 @@ export function cancelMockFeatureGrill(projectId: string, featureId: string): bo
     question: null,
     markdown: null,
     message: "job cancelled",
+    status: null,
+    prUrl: null,
+    summary: null,
     createdAt: new Date().toISOString(),
   });
   mockJobStatuses[featureId] = "cancelled";

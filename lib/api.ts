@@ -294,6 +294,15 @@ export async function retryFeatureGrill(projectId: string, featureId: string): P
   await parseJson<unknown>(response);
 }
 
+/** Re-dispatches feature_build for a feature whose build failed, keeping the already-approved ADR. */
+export async function retryFeatureBuild(projectId: string, featureId: string): Promise<void> {
+  const response = await fetch(
+    apiUrl(`/projects/${projectId}/features/${featureId}/retry-build`),
+    { method: "POST", credentials: "include" },
+  );
+  await parseJson<unknown>(response);
+}
+
 export async function fetchTests(projectId: string): Promise<Test[]> {
   const response = await fetch(apiUrl(`/projects/${projectId}/tests`), {
     cache: "no-store",

@@ -120,7 +120,9 @@ export type FeatureEventType =
   | "submit_adr"
   | "run_failed"
   | "run_cancelled"
-  | "user_message";
+  | "user_message"
+  | "submit_build_result"
+  | "run_started";
 
 export interface FeatureEvent {
   id: string;
@@ -128,6 +130,9 @@ export interface FeatureEvent {
   question: string | null;
   markdown: string | null;
   message: string | null;
+  status: string | null;
+  prUrl: string | null;
+  summary: string | null;
   createdAt: string;
 }
 
