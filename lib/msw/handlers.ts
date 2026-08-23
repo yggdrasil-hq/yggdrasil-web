@@ -8,6 +8,7 @@ import {
   createMockProject,
   deleteMockSecret,
   deleteMockUserSecret,
+  getMockDeployStatus,
   getMockFeature,
   getMockFeatureEvents,
   getMockFeatures,
@@ -26,6 +27,7 @@ import {
   mockOverview,
   removeMockProjectRepository,
   retryMockFeatureGrill,
+  triggerMockDeploy,
   updateMockFeature,
   updateMockTest,
   upsertMockSecret,
@@ -130,6 +132,27 @@ export const handlers = [
       updateMockFeature(project.id, initFeature.id, { status: "merged" });
     }
     return HttpResponse.json(getMockProject(project.id)!);
+  }),
+
+  http.get(apiUrl("/projects/:projectId/deploy"), ({ params }) => {
+    return HttpResponse.json(getMockDeployStatus(String(params.projectId)));
+  }),
+
+  http.post(apiUrl("/projects/:projectId/deploy"), ({ params }) => {
+    const result = triggerMockDeploy(String(params.projectId));
+    if (result === "not_found") {
+      return HttpResponse.json({ error: "Project not found" }, { status: 404 });
+    }
+    if (result === "not_ready") {
+      return HttpResponse.json({ error: "Project is not ready to deploy yet" }, { status: 409 });
+    }
+    if (result === "in_progress") {
+      return HttpResponse.json(
+        { error: "A deploy is already in progress for this project" },
+        { status: 409 },
+      );
+    }
+    return HttpResponse.json({}, { status: 201 });
   }),
 
   http.get(apiUrl("/projects/:projectId"), ({ params }) => {

@@ -1,5 +1,6 @@
 import { apiUrl } from "@/lib/config";
 import type {
+  DeployStatus,
   Feature,
   FeatureEventsResponse,
   GithubAccessResponse,
@@ -118,6 +119,23 @@ export async function completeProjectInit(projectId: string): Promise<Project> {
     credentials: "include",
   });
   return parseJson<Project>(response);
+}
+
+export async function fetchDeployStatus(projectId: string): Promise<DeployStatus> {
+  const response = await fetch(apiUrl(`/projects/${projectId}/deploy`), {
+    cache: "no-store",
+    credentials: "include",
+  });
+  return parseJson<DeployStatus>(response);
+}
+
+/** Manually (re)dispatches the project's `deploy` job — the "Deploy now" action. */
+export async function triggerDeploy(projectId: string): Promise<void> {
+  const response = await fetch(apiUrl(`/projects/${projectId}/deploy`), {
+    method: "POST",
+    credentials: "include",
+  });
+  await parseJson<unknown>(response);
 }
 
 export async function fetchProjectSecrets(

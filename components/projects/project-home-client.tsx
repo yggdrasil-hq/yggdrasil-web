@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/app-shell/app-shell";
 import { ActionQueue } from "@/components/projects/action-queue";
+import { DeployStatusPanel } from "@/components/projects/deploy-status-panel";
 import { FeatureCountCards } from "@/components/projects/feature-count-cards";
 import { Button } from "@/components/ui/button";
 import { fetchFeatures, fetchProject, fetchProjectOverview, completeProjectInit } from "@/lib/api";
@@ -132,6 +133,7 @@ export function ProjectHomeClient({ projectId }: ProjectHomeClientProps) {
 
       <main className="flex-1 space-y-6 px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
         <div className="mx-auto max-w-content space-y-6">
+          {project.status === "ready" && <DeployStatusPanel projectId={projectId} />}
           <FeatureCountCards counts={overview.counts} />
           <ActionQueue items={overview.actionQueue} />
         </div>

@@ -1,5 +1,6 @@
 import type {
   ActionQueueItem,
+  DeployStatus,
   Feature,
   FeatureEvent,
   FeatureEventsResponse,
@@ -249,6 +250,52 @@ export const mockJobStatuses: Record<string, JobStatus> = {
 };
 
 export const mockLastErrors: Record<string, string> = {};
+
+// Keyed by projectId (deploy jobs carry no featureId — they're project-level).
+export const mockDeployStatuses: Record<string, DeployStatus> = {};
+
+// Mirrors config.appsBaseDomain's dev default (api/src/config.ts) — this
+// mock never talks to a real API, so it's hardcoded rather than read from
+// an env var.
+const MOCK_APPS_BASE_DOMAIN = "yggdrasil.local";
+
+function mockDeployUrl(projectId: string): string {
+  const slug = getMockProject(projectId)?.slug ?? projectId;
+  return `https://${slug}.apps.${MOCK_APPS_BASE_DOMAIN}`;
+}
+
+export function getMockDeployStatus(projectId: string): DeployStatus {
+  return (
+    mockDeployStatuses[projectId] ?? {
+      status: null,
+      lastError: null,
+      startedAt: null,
+      completedAt: null,
+      url: mockDeployUrl(projectId),
+    }
+  );
+}
+
+export type TriggerMockDeployResult = "ok" | "not_found" | "not_ready" | "in_progress";
+
+/** Mirrors the real POST /:projectId/deploy's preconditions, and — like addMockFeatureReply — simulates the deploy completing right away, good enough for exercising the UI without a real Orchestrator. */
+export function triggerMockDeploy(projectId: string): TriggerMockDeployResult {
+  const project = getMockProject(projectId);
+  if (!project) return "not_found";
+  if (project.status !== "ready") return "not_ready";
+  const current = mockDeployStatuses[projectId];
+  if (current?.status === "pending" || current?.status === "running") return "in_progress";
+
+  const now = new Date().toISOString();
+  mockDeployStatuses[projectId] = {
+    status: "completed",
+    lastError: null,
+    startedAt: now,
+    completedAt: now,
+    url: mockDeployUrl(projectId),
+  };
+  return "ok";
+}
 
 export const mockTests: Test[] = [
   {

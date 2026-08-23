@@ -142,6 +142,16 @@ export interface FeatureEventsResponse {
   events: FeatureEvent[];
 }
 
+/** A project's most recent `deploy` job (ADR 013 addendum) — no `events`, unlike FeatureEventsResponse: deploy runs synchronously in the Orchestrator with no curated event stream. */
+export interface DeployStatus {
+  status: JobStatus | null;
+  lastError: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  /** Deterministic from the project slug (`<slug>.apps.<domain>`) — always present regardless of job status; only link to it once `status === "completed"`. */
+  url: string;
+}
+
 export interface Test {
   id: string;
   projectId: string;
