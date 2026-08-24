@@ -246,30 +246,34 @@ function GrillBubble({
   content: string;
 }) {
   return (
-    <div
-      className={`rounded-md border p-3 ${
-        tone === "user" ? "border-rime bg-surface-03" : "border-rime-soft bg-surface-02"
-      }`}
-    >
-      <p
-        className={`text-xs font-medium ${tone === "error" ? "text-red-400" : "text-shadow"}`}
+    <div className={`flex ${tone === "user" ? "justify-end" : "justify-start"}`}>
+      <div
+        className={`w-[90%] rounded-md border p-3 ${
+          tone === "user" ? "border-rime bg-surface-03" : "border-rime-soft bg-surface-02"
+        }`}
       >
-        {label}
-      </p>
-      <Markdown content={content} className="mt-1" />
+        <p
+          className={`text-xs font-medium ${tone === "error" ? "text-red-400" : "text-shadow"}`}
+        >
+          {label}
+        </p>
+        <Markdown content={content} className="mt-1" />
+      </div>
     </div>
   );
 }
 
 function ProcessingBubble() {
   return (
-    <div className="rounded-md border border-rime-soft bg-surface-02 p-3">
-      <p className="text-xs font-medium text-shadow">Agent</p>
-      <span className="mt-1 inline-flex gap-1">
-        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-mist [animation-delay:-0.3s]" />
-        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-mist [animation-delay:-0.15s]" />
-        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-mist" />
-      </span>
+    <div className="flex justify-start">
+      <div className="w-[90%] rounded-md border border-rime-soft bg-surface-02 p-3">
+        <p className="text-xs font-medium text-shadow">Agent</p>
+        <span className="mt-1 inline-flex gap-1">
+          <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-mist [animation-delay:-0.3s]" />
+          <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-mist [animation-delay:-0.15s]" />
+          <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-mist" />
+        </span>
+      </div>
     </div>
   );
 }

@@ -465,11 +465,6 @@ export const handlers = [
     switch (result) {
       case "not_found":
         return HttpResponse.json({ error: "Feature not found" }, { status: 404 });
-      case "wrong_type":
-        return HttpResponse.json(
-          { error: "Retry is only available for project initialization" },
-          { status: 409 },
-        );
       case "not_retryable":
         return HttpResponse.json(
           { error: "Feature is not in a retryable state" },

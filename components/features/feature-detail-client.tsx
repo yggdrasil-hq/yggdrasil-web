@@ -271,7 +271,7 @@ export function FeatureDetailClient({
                 >
                   {retryingBuild ? "Retrying…" : "Retry build"}
                 </Button>
-              ) : feature.featureType === "project_init" ? (
+              ) : (
                 <Button
                   className="mt-4"
                   disabled={retrying}
@@ -279,7 +279,7 @@ export function FeatureDetailClient({
                 >
                   {retrying ? "Retrying…" : "Retry grill"}
                 </Button>
-              ) : null}
+              )}
             </section>
           )}
 

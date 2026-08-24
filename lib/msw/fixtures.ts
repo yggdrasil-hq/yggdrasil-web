@@ -632,19 +632,17 @@ export function cancelMockFeatureGrill(projectId: string, featureId: string): bo
 export type RetryMockFeatureGrillResult =
   | "ok"
   | "not_found"
-  | "wrong_type"
   | "not_retryable"
   | "active_job"
   | "no_model_config";
 
-/** Mirrors the real retry-grill endpoint's preconditions (ADR 007). */
+/** Mirrors the real retry-grill endpoint's preconditions (ADR 007, ADR 012). */
 export function retryMockFeatureGrill(
   projectId: string,
   featureId: string,
 ): RetryMockFeatureGrillResult {
   const feature = getMockFeature(projectId, featureId);
   if (!feature) return "not_found";
-  if (feature.featureType !== "project_init") return "wrong_type";
   if (feature.status !== "draft" && feature.status !== "failed") return "not_retryable";
   if (mockJobStatuses[featureId] === "running") return "active_job";
   if (!isMockModelConfigResolvable(projectId)) return "no_model_config";
