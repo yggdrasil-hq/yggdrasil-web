@@ -333,6 +333,8 @@ export interface CreateDesignInput {
   name: string;
   description: string;
   slug?: string;
+  featureId?: string;
+  actionItemId?: string;
 }
 
 export async function createDesignSession(
@@ -697,6 +699,7 @@ export interface ActionItem {
   status: "open" | "resolved";
   resolvedAt: string | null;
   secretKey: string | null;
+  designSessionId: string | null;
   subtaskFeatureId: string | null;
   draftTestMarkdown: string | null;
   createdAt: string;
@@ -723,6 +726,24 @@ export async function resolveFeatureActionItem(
     { method: "POST", credentials: "include" },
   );
   await parseJson<unknown>(response);
+}
+
+export async function createTestFromActionItem(
+  projectId: string,
+  featureId: string,
+  itemId: string,
+  input: { name: string; specMarkdown?: string; scheduleCron: string },
+): Promise<Test> {
+  const response = await fetch(
+    apiUrl(`/projects/${projectId}/features/${featureId}/action-items/${itemId}/test`),
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+  return parseJson<Test>(response);
 }
 
 export async function autoResolveFeatureActionItems(

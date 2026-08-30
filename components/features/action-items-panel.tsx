@@ -1,15 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import {
   autoResolveFeatureActionItems,
+  createTestFromActionItem,
   fetchFeatureActionItems,
   resolveFeatureActionItem,
 } from "@/lib/api";
 import type { ActionItem } from "@/lib/api";
 import type { FeatureStatus } from "@/lib/features/statuses";
+import { appRoute } from "@/lib/config";
 
 const ACTION_TYPE_LABELS: Record<ActionItem["type"], string> = {
   secret_request: "Secret / env var",
@@ -45,6 +49,9 @@ export function ActionItemsPanel({
   const [items, setItems] = useState<ActionItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [testInputs, setTestInputs] = useState<
+    Record<string, { name: string; scheduleCron: string }>
+  >({});
 
   function load() {
     setLoading(true);
@@ -91,6 +98,23 @@ export function ActionItemsPanel({
     }
   }
 
+  async function createTest(item: ActionItem) {
+    const input = testInputs[item.id] ?? {
+      name: item.description.slice(0, 256),
+      scheduleCron: "0 0 * * *",
+    };
+    setError(null);
+    try {
+      await createTestFromActionItem(projectId, featureId, item.id, {
+        ...input,
+        specMarkdown: item.draftTestMarkdown ?? item.description,
+      });
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to create test.");
+    }
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -123,13 +147,67 @@ export function ActionItemsPanel({
                     <p className="mt-0.5 font-mono text-xs text-mist">{item.secretKey}</p>
                   ) : null}
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => void markResolved(item.id)}
-                >
-                  Resolve
-                </Button>
+                {item.type === "design_grill" ? (
+                  <Button variant="outline" size="sm" asChild>
+                    <Link
+                      href={appRoute(
+                        `/projects/${projectId}/designs/new?featureId=${featureId}&actionItemId=${item.id}`,
+                      )}
+                    >
+                      Start design
+                    </Link>
+                  </Button>
+                ) : item.type === "subtask_feature" && item.subtaskFeatureId ? (
+                  <Button variant="outline" size="sm" asChild>
+                    <Link
+                      href={appRoute(
+                        `/projects/${projectId}/features/${item.subtaskFeatureId}`,
+                      )}
+                    >
+                      Open subtask
+                    </Link>
+                  </Button>
+                ) : item.type === "test_request" ? (
+                  <div className="flex w-56 flex-col gap-2">
+                    <Input
+                      value={testInputs[item.id]?.name ?? item.description.slice(0, 256)}
+                      onChange={(event) =>
+                        setTestInputs((current) => ({
+                          ...current,
+                          [item.id]: {
+                            name: event.target.value,
+                            scheduleCron: current[item.id]?.scheduleCron ?? "0 0 * * *",
+                          },
+                        }))
+                      }
+                      placeholder="Test name"
+                    />
+                    <Input
+                      value={testInputs[item.id]?.scheduleCron ?? "0 0 * * *"}
+                      onChange={(event) =>
+                        setTestInputs((current) => ({
+                          ...current,
+                          [item.id]: {
+                            name: current[item.id]?.name ?? item.description.slice(0, 256),
+                            scheduleCron: event.target.value,
+                          },
+                        }))
+                      }
+                      placeholder="Cron schedule"
+                    />
+                    <Button variant="outline" size="sm" onClick={() => void createTest(item)}>
+                      Create test
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void markResolved(item.id)}
+                  >
+                    Resolve
+                  </Button>
+                )}
               </div>
             ))}
             {open.some((item) => item.type === "secret_request") ? (

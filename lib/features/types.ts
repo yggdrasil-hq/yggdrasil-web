@@ -142,6 +142,12 @@ export interface FeatureEvent {
   status: string | null;
   prUrl: string | null;
   summary: string | null;
+  actionItems?: Array<{
+    type: string;
+    description: string;
+    secretKey?: string;
+    draftTestMarkdown?: string;
+  }> | null;
   snapshot: Record<string, string> | null;
   createdAt: string;
 }

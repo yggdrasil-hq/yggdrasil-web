@@ -10,7 +10,15 @@ import { createDesignSession, fetchProject } from "@/lib/api";
 import { appRoute } from "@/lib/config";
 import type { Project } from "@/lib/features/types";
 
-export function NewDesignClient({ projectId }: { projectId: string }) {
+export function NewDesignClient({
+  projectId,
+  featureId,
+  actionItemId,
+}: {
+  projectId: string;
+  featureId?: string;
+  actionItemId?: string;
+}) {
   const router = useRouter();
   const [project, setProject] = useState<Project | null>(null);
   const [name, setName] = useState("");
@@ -31,7 +39,12 @@ export function NewDesignClient({ projectId }: { projectId: string }) {
     setCreating(true);
     setError(null);
     try {
-      const session = await createDesignSession(projectId, { name, description });
+      const session = await createDesignSession(projectId, {
+        name,
+        description,
+        featureId,
+        actionItemId,
+      });
       router.push(appRoute(`/projects/${projectId}/designs/${session.id}`));
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : "Failed to start design session");

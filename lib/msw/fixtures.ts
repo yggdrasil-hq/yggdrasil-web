@@ -718,6 +718,7 @@ const mockActionItems: Record<string, ActionItem[]> = {
       status: "open",
       resolvedAt: null,
       secretKey: "STRIPE_SECRET_KEY",
+      designSessionId: null,
       subtaskFeatureId: null,
       draftTestMarkdown: null,
       createdAt: hours(6),
@@ -729,6 +730,7 @@ const mockActionItems: Record<string, ActionItem[]> = {
       status: "open",
       resolvedAt: null,
       secretKey: null,
+      designSessionId: null,
       subtaskFeatureId: null,
       draftTestMarkdown:
         "# Webhook signing\n\n\n## Signed payload\n\n\nPOST /api/webhooks/stripe rejects unsigned payloads.",
@@ -741,6 +743,7 @@ const mockActionItems: Record<string, ActionItem[]> = {
       status: "resolved",
       resolvedAt: hours(2),
       secretKey: null,
+      designSessionId: "design-session-1",
       subtaskFeatureId: null,
       draftTestMarkdown: null,
       createdAt: hours(6),
