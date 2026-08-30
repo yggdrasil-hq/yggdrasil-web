@@ -14,6 +14,12 @@ interface TestingPanelProps {
 
 type Subview = "all" | "failed";
 
+function testGroupLabel(testGroup: TestingResults["runs"][number]["testGroup"]): string {
+  if (testGroup === "unit") return "Unit";
+  if (testGroup === "integration") return "Integration";
+  return "Agentic";
+}
+
 /**
  * ADR 015 items 9-11 / Track B4-B5: the Testing stage view for a feature in
  * `status === "testing"`. Groups results into Unit / Integration / Agentic
@@ -142,37 +148,60 @@ export function TestingPanel({ projectId, featureId }: TestingPanelProps) {
               return visible.length > 0 ? (
                 <div key={run.jobId}>
                   <p className="flex items-baseline gap-2 text-[13px] font-medium text-mist">
-                    Agentic
+                    {testGroupLabel(run.testGroup)}
                     <span className="text-xs font-normal text-shadow">
                       {run.status}
                     </span>
                   </p>
-                  <div className="mt-2 space-y-1.5">
-                    {run.steps.map((step) => (
-                      <div
-                        key={`${run.jobId}-${step.name}`}
-                        className="flex items-center gap-2.5 rounded-md border border-rime-soft px-3 py-2 text-[13px]"
-                      >
-                        <span
-                          className={cn(
-                            "shrink-0 text-sm",
-                            step.status === "pass"
-                              ? "text-status-approved"
-                              : "text-status-rejected",
-                          )}
-                          aria-hidden
-                        >
-                          {step.status === "pass" ? "\u2713" : "\u2717"}
-                        </span>
-                        <span className="min-w-0 flex-1 text-frost">{step.name}</span>
-                        {step.details ? (
-                          <span className="max-w-[50%] truncate text-xs text-shadow">
-                            {step.details}
-                          </span>
+                  {run.report ? (
+                    <div className="mt-2 rounded-md border border-rime-soft px-3 py-2 text-[13px]">
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-frost">
+                        <span>{run.report.passed} passed</span>
+                        <span>{run.report.failed} failed</span>
+                        <span>{run.report.skipped} skipped</span>
+                        <span>{run.report.total} total</span>
+                        {run.report.coveragePercent != null ? (
+                          <span>{run.report.coveragePercent}% coverage</span>
                         ) : null}
                       </div>
-                    ))}
-                  </div>
+                      <p className="mt-1 text-xs text-shadow">{run.report.summary}</p>
+                      {run.report.failingTests.length > 0 ? (
+                        <ul className="mt-2 list-disc pl-4 text-xs text-destructive">
+                          {run.report.failingTests.map((test) => (
+                            <li key={test}>{test}</li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {run.steps.length > 0 ? (
+                    <div className="mt-2 space-y-1.5">
+                      {run.steps.map((step) => (
+                        <div
+                          key={`${run.jobId}-${step.name}`}
+                          className="flex items-center gap-2.5 rounded-md border border-rime-soft px-3 py-2 text-[13px]"
+                        >
+                          <span
+                            className={cn(
+                              "shrink-0 text-sm",
+                              step.status === "pass"
+                                ? "text-status-approved"
+                                : "text-status-rejected",
+                            )}
+                            aria-hidden
+                          >
+                            {step.status === "pass" ? "\u2713" : "\u2717"}
+                          </span>
+                          <span className="min-w-0 flex-1 text-frost">{step.name}</span>
+                          {step.details ? (
+                            <span className="max-w-[50%] truncate text-xs text-shadow">
+                              {step.details}
+                            </span>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
               ) : null;
             })}

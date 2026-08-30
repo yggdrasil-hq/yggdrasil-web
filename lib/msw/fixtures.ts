@@ -798,6 +798,7 @@ const mockTestReports: Record<string, TestingResults> = {
     runs: [{
       jobId: "job_test_009",
       testId: "test_009",
+      testGroup: null,
       status: "completed",
       report: {
         passed: 2,

@@ -318,6 +318,7 @@ export interface TestingReport {
 export interface TestingRun {
   jobId: string;
   testId: string | null;
+  testGroup: "unit" | "integration" | null;
   status: JobStatus;
   report: TestingReport | null;
   steps: TestingStep[];
@@ -352,6 +353,7 @@ export function testReportToTestingResults(
     runs: [{
       jobId: `report-${featureId}`,
       testId: null,
+      testGroup: null,
       status: "completed",
       report: {
         passed: report.passed,

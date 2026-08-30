@@ -22,6 +22,7 @@ function sampleResults(): TestingResults {
     runs: [{
       jobId: "job_x",
       testId: "test_x",
+      testGroup: null,
       status: "completed",
       report: {
         passed: 2,
