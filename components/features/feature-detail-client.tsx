@@ -1,17 +1,22 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AppShell } from "@/components/app-shell/app-shell";
 import { StatusBadge } from "@/components/features/status-badge";
 import { SpecGrillPanel } from "@/components/features/spec-grill-panel";
 import { BuildProgressPanel } from "@/components/features/build-progress-panel";
+import { ActionItemsPanel } from "@/components/features/action-items-panel";
+import { TestingPanel } from "@/components/features/testing-panel";
+import { AgenticReviewPanel } from "@/components/features/agentic-review-panel";
+import { ManualReviewPanel } from "@/components/features/manual-review-panel";
 import { Markdown } from "@/components/markdown";
 import { Button } from "@/components/ui/button";
 import {
   fetchFeature,
   fetchFeatureEvents,
   fetchProject,
+  resumeFeatureImplementation,
   retryFeatureBuild,
   retryFeatureGrill,
   updateFeature,
@@ -35,7 +40,16 @@ export function FeatureDetailClient({
   const [saving, setSaving] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [retryingBuild, setRetryingBuild] = useState(false);
+  const [resuming, setResuming] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
+  // null = action items not loaded yet → Start build stays disabled until the
+  // panel reports the real open count (preempts the backend's 409, ADR 015
+  // item 2).
+  const [openActionItemCount, setOpenActionItemCount] = useState<number | null>(null);
+
+  const handleOpenItemCountChange = useCallback((openCount: number) => {
+    setOpenActionItemCount(openCount);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -170,6 +184,20 @@ export function FeatureDetailClient({
     }
   }
 
+  async function handleResume() {
+    setResuming(true);
+    setError(null);
+    try {
+      await resumeFeatureImplementation(projectId, featureId);
+      const updated = await fetchFeature(projectId, featureId);
+      setFeature(updated);
+    } catch (resumeError) {
+      setError(resumeError instanceof Error ? resumeError.message : "Failed to resume");
+    } finally {
+      setResuming(false);
+    }
+  }
+
   if (error && !feature) {
     return (
       <div className="flex min-h-screen items-center justify-center text-mist">
@@ -221,9 +249,19 @@ export function FeatureDetailClient({
                   </Button>
                 </div>
               ) : (
-                <Button disabled={saving} onClick={() => void handleStartBuild()}>
-                  Start build
-                </Button>
+                <div className="flex flex-col items-end gap-1.5">
+                  <Button
+                    disabled={saving || openActionItemCount !== 0}
+                    onClick={() => void handleStartBuild()}
+                  >
+                    Start build
+                  </Button>
+                  {(openActionItemCount ?? 0) > 0 ? (
+                    <p className="text-xs text-shadow">
+                      Resolve open action items to enable build
+                    </p>
+                  ) : null}
+                </div>
               )}
             </div>
 
@@ -244,6 +282,29 @@ export function FeatureDetailClient({
         )}
 
         <div className="mx-auto max-w-content space-y-6">
+          {feature.status === "spec_ready" ? (
+            <ActionItemsPanel
+              projectId={projectId}
+              featureId={featureId}
+              status={feature.status}
+              onOpenCountChange={handleOpenItemCountChange}
+            />
+          ) : null}
+
+          {feature.status === "testing" ? (
+            <TestingPanel projectId={projectId} featureId={featureId} />
+          ) : null}
+
+          {feature.status === "agentic_review" ? (
+            <AgenticReviewPanel projectId={projectId} featureId={featureId} />
+          ) : null}
+
+          {feature.status === "in_review" ||
+          feature.status === "returned" ||
+          feature.status === "merged" ? (
+            <ManualReviewPanel projectId={projectId} feature={feature} />
+          ) : null}
+
           {error && feature.status !== "spec_ready" ? (
             <p className="text-sm text-red-400">{error}</p>
           ) : null}
@@ -280,6 +341,28 @@ export function FeatureDetailClient({
                   {retrying ? "Retrying…" : "Retry grill"}
                 </Button>
               )}
+            </section>
+          )}
+
+          {feature.status === "returned" && (
+            <section className="rounded-card border border-amber-500/30 bg-amber-500/10 p-6">
+              <h2 className="text-base font-semibold text-frost">Returned for changes</h2>
+              <p className="mt-1 text-sm text-mist">
+                Sent back to implementation
+                {feature.returnReason ? ` (${feature.returnReason})` : ""}.
+              </p>
+              {feature.returnComment ? (
+                <p className="mt-2 rounded-md bg-surface-02 p-3 text-sm text-frost">
+                  {feature.returnComment}
+                </p>
+              ) : null}
+              <Button
+                className="mt-4"
+                disabled={resuming}
+                onClick={() => void handleResume()}
+              >
+                {resuming ? "Resuming…" : "Resume implementation"}
+              </Button>
             </section>
           )}
 

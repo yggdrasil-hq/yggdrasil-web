@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   Bell,
+  Building2,
   ChevronDown,
   FlaskConical,
   Home,
@@ -172,6 +173,17 @@ export function AppSidebar({
 
       <div className="border-t border-rime-soft px-3 py-3">
         <div className="space-y-1">
+          <Link
+            href={appRoute("/settings/organization/general")}
+            onClick={onNavigate}
+            className={cn(
+              "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
+              "text-mist hover:bg-surface-02 hover:text-frost",
+            )}
+          >
+            <Building2 className="size-4 shrink-0" />
+            Organization
+          </Link>
           <Link
             href={settingsHref}
             onClick={onNavigate}

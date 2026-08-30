@@ -1,5 +1,6 @@
 import type {
   ActionQueueItem,
+  AgenticReview,
   DeployStatus,
   Feature,
   FeatureEvent,
@@ -9,8 +10,10 @@ import type {
   Project,
   ProjectOverview,
   ProjectSecretMetadata,
+  TestingResults,
   Test,
 } from "@/lib/features/types";
+import type { ActionItem } from "@/lib/api";
 import { MOCK_PROJECT_ID } from "@/lib/config";
 
 function computeRepositoryRemovalBlockedReason(project: Project): string | null {
@@ -139,12 +142,15 @@ export const mockFeatures: Feature[] = [
     slug: "team-invitation-flow",
     featureType: "normal",
     specExcerpt: "Invite teammates by email with role selection.",
-    status: "changes_requested",
+    status: "returned",
     adrMarkdown: "# ADR: Team invitation flow\n",
     awaitingUserInput: false,
     adrApproved: true,
     branchName: "yggdrasil/team-invitation-flow-feat_006",
     prUrl: "https://github.com/acme-corp/acme-web/pull/38",
+    returnReason: "human_review",
+    returnComment:
+      "Please show the invited member's role in the invitation email subject line.",
     createdAt: days(3),
     updatedAt: hours(4),
   },
@@ -180,6 +186,38 @@ export const mockFeatures: Feature[] = [
     createdAt: days(9),
     updatedAt: days(4),
   },
+  {
+    id: "feat_009",
+    projectId: MOCK_PROJECT_ID,
+    title: "Webhook retry queue",
+    slug: "webhook-retry-queue",
+    featureType: "normal",
+    specExcerpt: "Retry failed webhooks with exponential backoff.",
+    status: "testing",
+    adrMarkdown: "# ADR: Webhook retry queue\n",
+    awaitingUserInput: false,
+    adrApproved: true,
+    branchName: "yggdrasil/webhook-retry-queue-feat_009",
+    prUrl: null,
+    createdAt: hours(10),
+    updatedAt: hours(1),
+  },
+  {
+    id: "feat_010",
+    projectId: MOCK_PROJECT_ID,
+    title: "Customer CSV export",
+    slug: "customer-csv-export",
+    featureType: "normal",
+    specExcerpt: "Export the customer list to CSV with column selection.",
+    status: "agentic_review",
+    adrMarkdown: "# ADR: Customer CSV export\n",
+    awaitingUserInput: false,
+    adrApproved: true,
+    branchName: "yggdrasil/customer-csv-export-feat_010",
+    prUrl: null,
+    createdAt: hours(20),
+    updatedAt: hours(2),
+  },
 ];
 
 export const mockProject: Project = withRepositoryRemovalBlockedReason({
@@ -191,6 +229,7 @@ export const mockProject: Project = withRepositoryRemovalBlockedReason({
   installationId: "inst_mock_acme",
   githubAccessWarning: false,
   modelConfigWarning: false,
+  agenticReviewEnabled: true,
   repositories: [
     {
       id: "repo_primary",
@@ -314,8 +353,8 @@ export const mockTests: Test[] = [
 
 export const mockOverview: ProjectOverview = {
   counts: {
-    planned: 2,
-    inProgress: 4,
+    planned: 3,
+    inProgress: 6,
     completed: 1,
   },
   actionQueue: [
@@ -413,6 +452,7 @@ export function createMockProject(input: {
     installationId: "inst_mock_acme",
     githubAccessWarning: false,
     modelConfigWarning: false,
+    agenticReviewEnabled: true,
     repositories: input.repositories.map((repo, index) => ({
       id: `repo_${id}_${index}`,
       githubOwner: repo.githubOwner,
@@ -575,6 +615,183 @@ export function updateMockFeature(
   };
   recalculateMockOverview();
   return mockFeatures[index];
+}
+
+// --- Feature Action Items (ADR 015 item 4-6 / Track B2) ---
+
+const mockActionItems: Record<string, ActionItem[]> = {
+  // feat_003 is spec_ready + adrApproved — keep an open secret_request and a
+  // manually-resolvable test_request so the "Start build" gate is visible.
+  feat_003: [
+    {
+      id: "ai_001",
+      type: "secret_request",
+      description: "Add STRIPE_SECRET_KEY to the project secrets.",
+      status: "open",
+      resolvedAt: null,
+      secretKey: "STRIPE_SECRET_KEY",
+      subtaskFeatureId: null,
+      draftTestMarkdown: null,
+      createdAt: hours(6),
+    },
+    {
+      id: "ai_002",
+      type: "test_request",
+      description: "Add a webhook-handling test for signed payloads.",
+      status: "open",
+      resolvedAt: null,
+      secretKey: null,
+      subtaskFeatureId: null,
+      draftTestMarkdown:
+        "# Webhook signing\n\n\n## Signed payload\n\n\nPOST /api/webhooks/stripe rejects unsigned payloads.",
+      createdAt: hours(6),
+    },
+    {
+      id: "ai_003",
+      type: "design_grill",
+      description: "Move the webhook retry UI into a design session.",
+      status: "resolved",
+      resolvedAt: hours(2),
+      secretKey: null,
+      subtaskFeatureId: null,
+      draftTestMarkdown: null,
+      createdAt: hours(6),
+    },
+  ],
+};
+
+export function getMockActionItems(
+  projectId: string,
+  featureId: string,
+): ActionItem[] {
+  void projectId;
+  return mockActionItems[featureId] ?? [];
+}
+
+export function resolveMockActionItem(
+  projectId: string,
+  featureId: string,
+  itemId: string,
+): boolean {
+  void projectId;
+  const item = mockActionItems[featureId]?.find((it) => it.id === itemId);
+  if (!item || item.status !== "open") return false;
+  item.status = "resolved";
+  item.resolvedAt = new Date().toISOString();
+  return true;
+}
+
+export function autoResolveMockActionItems(
+  projectId: string,
+  featureId: string,
+): { resolved: number; remainingOpen: number } {
+  void projectId;
+  const items = mockActionItems[featureId] ?? [];
+  let resolved = 0;
+  for (const item of items) {
+    if (item.status !== "open") continue;
+    if (item.type === "secret_request") {
+      item.status = "resolved";
+      item.resolvedAt = new Date().toISOString();
+      resolved += 1;
+    }
+  }
+  const remainingOpen = items.filter((it) => it.status === "open").length;
+  return { resolved, remainingOpen };
+}
+
+// --- Testing stage results (ADR 015 items 9-11 / B4-B5) ---
+
+const mockTestReports: Record<string, TestingResults> = {
+  // feat_009 (status: testing) has a passing report by default.
+  feat_009: {
+    featureId: "feat_009",
+    status: "testing",
+    runs: [{
+      jobId: "job_test_009",
+      testId: "test_009",
+      status: "completed",
+      report: {
+        passed: 2,
+        failed: 0,
+        skipped: 0,
+        total: 2,
+        coveragePercent: 78,
+        failingTests: [],
+        summary: "All test scenarios passed.",
+        recordingPath: null,
+        createdAt: new Date().toISOString(),
+      },
+      steps: [
+        {
+          name: "Retry delivery regression suite",
+          status: "pass",
+          details: null,
+          screenshotPath: null,
+          createdAt: new Date().toISOString(),
+        },
+        {
+          name: "Signed payload acceptance",
+          status: "pass",
+          details: null,
+          screenshotPath: null,
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    }],
+  },
+};
+
+export function getMockTestingResults(
+  projectId: string,
+  featureId: string,
+): TestingResults | null {
+  void projectId;
+  return mockTestReports[featureId] ?? null;
+}
+
+// --- Agentic Review results (ADR 015 items 13-16 / B6) ---
+
+const mockAgenticReviews: Record<string, AgenticReview> = {
+  // feat_010 (status: agentic_review) defaults to a changes_requested verdict.
+  feat_010: {
+    featureId: "feat_010",
+    verdict: "changes_requested",
+    comment: "1 blocking finding — sent back to implementation.",
+    findings: [
+      {
+        location: "lib/export-csv.ts:18",
+        note:
+          "Column selection doesn't validate against the customer schema before emitting the header row — will produce malformed CSV for unknown columns.",
+        blocking: true,
+      },
+      {
+        location: "app/customers/export.tsx:42",
+        note: "Nit: consider memoizing the column picker — not blocking.",
+        blocking: false,
+      },
+    ],
+  },
+};
+
+export function getMockAgenticReview(
+  projectId: string,
+  featureId: string,
+): AgenticReview | null {
+  void projectId;
+  return mockAgenticReviews[featureId] ?? null;
+}
+
+// --- Resume implementation (ADR 015 item 18 / B7) ---
+
+export function resumeMockFeature(
+  projectId: string,
+  featureId: string,
+): boolean {
+  const feature = getMockFeature(projectId, featureId);
+  if (!feature || feature.status !== "returned") return false;
+  updateMockFeature(projectId, featureId, { status: "queued" });
+  return true;
 }
 
 export function getMockFeatureEvents(featureId: string): FeatureEventsResponse {

@@ -4,10 +4,13 @@ import {
   addMockFeature,
   addMockFeatureReply,
   addMockProjectRepository,
+  autoResolveMockActionItems,
   cancelMockFeatureGrill,
   createMockProject,
   deleteMockSecret,
   deleteMockUserSecret,
+  getMockActionItems,
+  getMockAgenticReview,
   getMockDeployStatus,
   getMockFeature,
   getMockFeatureEvents,
@@ -16,6 +19,7 @@ import {
   getMockProjects,
   getMockSecrets,
   getMockTest,
+  getMockTestingResults,
   getMockTests,
   getMockUserSecrets,
   addMockTest,
@@ -26,6 +30,8 @@ import {
   mockNotifications,
   mockOverview,
   removeMockProjectRepository,
+  resolveMockActionItem,
+  resumeMockFeature,
   retryMockFeatureGrill,
   triggerMockDeploy,
   updateMockFeature,
@@ -161,6 +167,21 @@ export const handlers = [
       return HttpResponse.json({ error: "Project not found" }, { status: 404 });
     }
     return HttpResponse.json(project);
+  }),
+
+  // ADR 015 item 12: toggles the per-project Agentic Review gate.
+  http.patch(apiUrl("/projects/:projectId"), async ({ params, request }) => {
+    const project = getMockProject(String(params.projectId));
+    if (!project) {
+      return HttpResponse.json({ error: "Project not found" }, { status: 404 });
+    }
+
+    const body = (await request.json()) as { agenticReviewEnabled?: boolean };
+    if (typeof body.agenticReviewEnabled !== "boolean") {
+      return HttpResponse.json({ error: "Invalid input" }, { status: 400 });
+    }
+    project.agenticReviewEnabled = body.agenticReviewEnabled;
+    return HttpResponse.json(getMockProject(project.id)!);
   }),
 
   http.post(apiUrl("/projects/:projectId/repositories"), async ({ params, request }) => {
@@ -393,6 +414,20 @@ export const handlers = [
       }
 
       if (body.startBuild) {
+        // ADR 015 item 2: the API refuses to queue a build while any Action
+        // Item on the feature is still open — mirrors the real 409.
+        const openCount = getMockActionItems(
+          String(params.projectId),
+          String(params.featureId),
+        ).filter((item) => item.status === "open").length;
+        if (openCount > 0) {
+          return HttpResponse.json(
+            {
+              error: `Resolve ${openCount} open action item${openCount === 1 ? "" : "s"} before starting the build`,
+            },
+            { status: 409 },
+          );
+        }
         patch.status = "queued";
       }
 
@@ -495,6 +530,117 @@ export const handlers = [
     }
     return HttpResponse.json(getMockTests(project.id));
   }),
+
+  // --- Feature lifecycle gates (ADR 015 / Track B) ---
+
+  http.get(
+    apiUrl("/projects/:projectId/features/:featureId/action-items"),
+    ({ params }) => {
+      const feature = getMockFeature(
+        String(params.projectId),
+        String(params.featureId),
+      );
+      if (!feature) {
+        return HttpResponse.json({ error: "Feature not found" }, { status: 404 });
+      }
+      return HttpResponse.json(
+        getMockActionItems(String(params.projectId), String(params.featureId)),
+      );
+    },
+  ),
+
+  http.post(
+    apiUrl(
+      "/projects/:projectId/features/:featureId/action-items/:itemId/resolve",
+    ),
+    ({ params }) => {
+      const projectId = String(params.projectId);
+      const featureId = String(params.featureId);
+      const feature = getMockFeature(projectId, featureId);
+      if (!feature) {
+        return HttpResponse.json({ error: "Feature not found" }, { status: 404 });
+      }
+      const resolved = resolveMockActionItem(
+        projectId,
+        featureId,
+        String(params.itemId),
+      );
+      if (!resolved) {
+        return HttpResponse.json(
+          { error: "Action item not found or already resolved" },
+          { status: 404 },
+        );
+      }
+      return HttpResponse.json(getMockActionItems(projectId, featureId));
+    },
+  ),
+
+  http.post(
+    apiUrl("/projects/:projectId/features/:featureId/action-items/auto-resolve"),
+    ({ params }) => {
+      const projectId = String(params.projectId);
+      const featureId = String(params.featureId);
+      const feature = getMockFeature(projectId, featureId);
+      if (!feature) {
+        return HttpResponse.json({ error: "Feature not found" }, { status: 404 });
+      }
+      return HttpResponse.json(
+        autoResolveMockActionItems(projectId, featureId),
+      );
+    },
+  ),
+
+  // ADR 015 item 18: returned -> [human clicks] -> queued.
+  http.post(
+    apiUrl("/projects/:projectId/features/:featureId/resume"),
+    ({ params }) => {
+      const projectId = String(params.projectId);
+      const featureId = String(params.featureId);
+      const feature = getMockFeature(projectId, featureId);
+      if (!feature) {
+        return HttpResponse.json({ error: "Feature not found" }, { status: 404 });
+      }
+      if (!resumeMockFeature(projectId, featureId)) {
+        return HttpResponse.json(
+          { error: "Only a returned feature can be resumed" },
+          { status: 409 },
+        );
+      }
+      return HttpResponse.json({}, { status: 201 });
+    },
+  ),
+
+  http.get(
+    apiUrl("/projects/:projectId/features/:featureId/testing"),
+    ({ params }) => {
+      const feature = getMockFeature(
+        String(params.projectId),
+        String(params.featureId),
+      );
+      if (!feature) {
+        return HttpResponse.json({ error: "Feature not found" }, { status: 404 });
+      }
+      return HttpResponse.json(
+        getMockTestingResults(String(params.projectId), String(params.featureId)),
+      );
+    },
+  ),
+
+  http.get(
+    apiUrl("/projects/:projectId/features/:featureId/agentic-review"),
+    ({ params }) => {
+      const feature = getMockFeature(
+        String(params.projectId),
+        String(params.featureId),
+      );
+      if (!feature) {
+        return HttpResponse.json({ error: "Feature not found" }, { status: 404 });
+      }
+      return HttpResponse.json(
+        getMockAgenticReview(String(params.projectId), String(params.featureId)),
+      );
+    },
+  ),
 
   http.post(apiUrl("/projects/:projectId/tests"), async ({ params, request }) => {
     const project = getMockProject(String(params.projectId));

@@ -20,7 +20,8 @@ interface HubLayoutProps {
 const navLinks = [
   { href: "/projects", label: "Projects" },
   { href: "/notifications", label: "Notifications", icon: Bell },
-  { href: "/settings/account", label: "Settings", icon: Settings },
+  { href: "/settings/organization/general", label: "Organization", icon: Settings },
+  { href: "/settings/account", label: "Account" },
 ] as const;
 
 export function HubLayout({ title, description, children, className }: HubLayoutProps) {
