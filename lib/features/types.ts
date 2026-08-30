@@ -20,6 +20,8 @@ export interface Project {
   modelConfigWarning: boolean;
   /** ADR 015 item 12: per-project Agentic Review gate, default on. */
   agenticReviewEnabled: boolean;
+  /** ADR 014: whether design sessions are enabled for this project. */
+  hasDesignSurface: boolean;
   repositories: ProjectRepository[];
   repositoryRemovalBlockedReason: string | null;
 }
@@ -127,7 +129,9 @@ export type FeatureEventType =
   | "run_cancelled"
   | "user_message"
   | "submit_build_result"
-  | "run_started";
+  | "run_started"
+  | "update_design_preview"
+  | "submit_design";
 
 export interface FeatureEvent {
   id: string;
@@ -138,7 +142,24 @@ export interface FeatureEvent {
   status: string | null;
   prUrl: string | null;
   summary: string | null;
+  snapshot: Record<string, string> | null;
   createdAt: string;
+}
+
+export interface DesignSession {
+  id: string;
+  name: string;
+  slug: string;
+  description: string;
+  status: JobStatus;
+  createdAt: string;
+}
+
+export interface DesignEventsResponse {
+  session: DesignSession;
+  jobStatus: JobStatus;
+  lastError: string | null;
+  events: FeatureEvent[];
 }
 
 export interface FeatureEventsResponse {

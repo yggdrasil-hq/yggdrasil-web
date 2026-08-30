@@ -10,6 +10,7 @@ import {
   Home,
   LayoutGrid,
   LogOut,
+  Palette,
   Settings,
   X,
 } from "lucide-react";
@@ -155,6 +156,22 @@ export function AppSidebar({
             </Link>
           );
         })}
+
+        {project.status === "ready" && project.hasDesignSurface && (
+          <Link
+            href={appRoute(`/projects/${project.id}/designs/new`)}
+            onClick={onNavigate}
+            className={cn(
+              "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
+              pathname.startsWith(appRoute(`/projects/${project.id}/designs`))
+                ? "bg-surface-03 text-frost"
+                : "text-mist hover:bg-surface-02 hover:text-frost",
+            )}
+          >
+            <Palette className="size-4 shrink-0" />
+            Designs
+          </Link>
+        )}
 
         <Link
           href={notificationsHref}

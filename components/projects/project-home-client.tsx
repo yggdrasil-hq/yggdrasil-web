@@ -99,9 +99,16 @@ export function ProjectHomeClient({ projectId }: ProjectHomeClientProps) {
             </h1>
             <p className="mt-1 text-sm text-mist">{project.description}</p>
           </div>
-          <Button asChild variant="outline">
-            <Link href={appRoute(`/projects/${projectId}/features`)}>View features</Link>
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button asChild variant="outline">
+              <Link href={appRoute(`/projects/${projectId}/features`)}>View features</Link>
+            </Button>
+            {project.status === "ready" && project.hasDesignSurface && (
+              <Button asChild variant="outline">
+                <Link href={appRoute(`/projects/${projectId}/designs/new`)}>New design</Link>
+              </Button>
+            )}
+          </div>
         </div>
 
         {project.status === "initializing" && (

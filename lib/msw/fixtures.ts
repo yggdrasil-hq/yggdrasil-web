@@ -2,6 +2,8 @@ import type {
   ActionQueueItem,
   AgenticReview,
   DeployStatus,
+  DesignEventsResponse,
+  DesignSession,
   Feature,
   FeatureEvent,
   FeatureEventsResponse,
@@ -230,6 +232,7 @@ export const mockProject: Project = withRepositoryRemovalBlockedReason({
   githubAccessWarning: false,
   modelConfigWarning: false,
   agenticReviewEnabled: true,
+  hasDesignSurface: true,
   repositories: [
     {
       id: "repo_primary",
@@ -279,6 +282,7 @@ export const mockJobEvents: Record<string, FeatureEvent[]> = {
       status: null,
       prUrl: null,
       summary: null,
+      snapshot: null,
       createdAt: hours(3),
     },
   ],
@@ -289,6 +293,89 @@ export const mockJobStatuses: Record<string, JobStatus> = {
 };
 
 export const mockLastErrors: Record<string, string> = {};
+
+export const mockDesignSessions: Record<string, DesignSession> = {};
+export const mockDesignEvents: Record<string, FeatureEvent[]> = {};
+
+export function createMockDesignSession(
+  projectId: string,
+  input: { name: string; description: string; slug?: string },
+): DesignSession | null {
+  if (!getMockProject(projectId)?.hasDesignSurface) return null;
+  const id = `design_${Date.now()}`;
+  const slug = input.slug ?? input.name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  const session: DesignSession = {
+    id,
+    name: input.name,
+    slug,
+    description: input.description,
+    status: "running",
+    createdAt: new Date().toISOString(),
+  };
+  mockDesignSessions[id] = session;
+  mockDesignEvents[id] = [{
+    id: `design_event_${Date.now()}`,
+    type: "ask_user",
+    question: "What should the primary interaction feel like?",
+    markdown: null,
+    message: null,
+    status: null,
+    prUrl: null,
+    summary: null,
+    snapshot: null,
+    createdAt: new Date().toISOString(),
+  }];
+  return session;
+}
+
+export function getMockDesignEvents(
+  projectId: string,
+  sessionId: string,
+): DesignEventsResponse | null {
+  const project = getMockProject(projectId);
+  const session = mockDesignSessions[sessionId];
+  if (!project || !session) return null;
+  return {
+    session,
+    jobStatus: session.status,
+    lastError: null,
+    events: mockDesignEvents[sessionId] ?? [],
+  };
+}
+
+export function addMockDesignReply(sessionId: string, content: string): void {
+  const session = mockDesignSessions[sessionId];
+  if (!session) return;
+  const now = new Date().toISOString();
+  mockDesignEvents[sessionId]?.push(
+    {
+      id: `design_event_${Date.now()}`,
+      type: "user_message",
+      question: null,
+      markdown: null,
+      message: content,
+      status: null,
+      prUrl: null,
+      summary: null,
+      snapshot: null,
+      createdAt: now,
+    },
+    {
+      id: `design_event_${Date.now() + 1}`,
+      type: "update_design_preview",
+      question: null,
+      markdown: null,
+      message: null,
+      status: null,
+      prUrl: null,
+      summary: null,
+      snapshot: {
+        "page.html": `<main style="font: 18px system-ui; padding: 3rem"><h1>${content}</h1><button>Continue</button></main>`,
+      },
+      createdAt: now,
+    },
+  );
+}
 
 // Keyed by projectId (deploy jobs carry no featureId — they're project-level).
 export const mockDeployStatuses: Record<string, DeployStatus> = {};
@@ -453,6 +540,7 @@ export function createMockProject(input: {
     githubAccessWarning: false,
     modelConfigWarning: false,
     agenticReviewEnabled: true,
+    hasDesignSurface: true,
     repositories: input.repositories.map((repo, index) => ({
       id: `repo_${id}_${index}`,
       githubOwner: repo.githubOwner,
@@ -815,6 +903,7 @@ export function addMockFeatureReply(projectId: string, featureId: string, conten
     status: null,
     prUrl: null,
     summary: null,
+    snapshot: null,
     createdAt: new Date().toISOString(),
   });
   mockJobStatuses[featureId] = "completed";
@@ -839,6 +928,7 @@ export function cancelMockFeatureGrill(projectId: string, featureId: string): bo
     status: null,
     prUrl: null,
     summary: null,
+    snapshot: null,
     createdAt: new Date().toISOString(),
   });
   mockJobStatuses[featureId] = "cancelled";

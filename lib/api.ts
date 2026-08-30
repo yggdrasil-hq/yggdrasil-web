@@ -1,6 +1,8 @@
 import { apiUrl } from "@/lib/config";
 import type {
   DeployStatus,
+  DesignEventsResponse,
+  DesignSession,
   Feature,
   FeatureEventsResponse,
   GithubAccessResponse,
@@ -324,6 +326,64 @@ export async function cancelFeatureGrill(projectId: string, featureId: string): 
     method: "POST",
     credentials: "include",
   });
+  await parseJson<unknown>(response);
+}
+
+export interface CreateDesignInput {
+  name: string;
+  description: string;
+  slug?: string;
+}
+
+export async function createDesignSession(
+  projectId: string,
+  input: CreateDesignInput,
+): Promise<DesignSession> {
+  const response = await fetch(apiUrl(`/projects/${projectId}/designs`), {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return parseJson<DesignSession>(response);
+}
+
+export async function fetchDesignEvents(
+  projectId: string,
+  sessionId: string,
+): Promise<DesignEventsResponse> {
+  const response = await fetch(
+    apiUrl(`/projects/${projectId}/designs/${sessionId}/events`),
+    { cache: "no-store", credentials: "include" },
+  );
+  return parseJson<DesignEventsResponse>(response);
+}
+
+export async function sendDesignMessage(
+  projectId: string,
+  sessionId: string,
+  content: string,
+): Promise<void> {
+  const response = await fetch(
+    apiUrl(`/projects/${projectId}/designs/${sessionId}/messages`),
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content }),
+    },
+  );
+  await parseJson<unknown>(response);
+}
+
+export async function cancelDesignSession(
+  projectId: string,
+  sessionId: string,
+): Promise<void> {
+  const response = await fetch(
+    apiUrl(`/projects/${projectId}/designs/${sessionId}/cancel`),
+    { method: "POST", credentials: "include" },
+  );
   await parseJson<unknown>(response);
 }
 

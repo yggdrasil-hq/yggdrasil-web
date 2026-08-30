@@ -6,6 +6,8 @@ import {
   addMockProjectRepository,
   autoResolveMockActionItems,
   cancelMockFeatureGrill,
+  addMockDesignReply,
+  createMockDesignSession,
   createMockProject,
   deleteMockSecret,
   deleteMockUserSecret,
@@ -14,6 +16,7 @@ import {
   getMockDeployStatus,
   getMockFeature,
   getMockFeatureEvents,
+  getMockDesignEvents,
   getMockFeatures,
   getMockProject,
   getMockProjects,
@@ -447,6 +450,41 @@ export const handlers = [
       return HttpResponse.json({ error: "Feature not found" }, { status: 404 });
     }
     return HttpResponse.json(getMockFeatureEvents(String(params.featureId)));
+  }),
+
+  http.post(apiUrl("/projects/:projectId/designs"), async ({ params, request }) => {
+    const session = createMockDesignSession(String(params.projectId), await request.json() as {
+      name: string;
+      description: string;
+      slug?: string;
+    });
+    if (!session) return HttpResponse.json({ error: "Design sessions are not enabled for this project" }, { status: 409 });
+    return HttpResponse.json(session, { status: 201 });
+  }),
+
+  http.get(apiUrl("/projects/:projectId/designs/:sessionId/events"), ({ params }) => {
+    const result = getMockDesignEvents(String(params.projectId), String(params.sessionId));
+    if (!result) return HttpResponse.json({ error: "Design session not found" }, { status: 404 });
+    return HttpResponse.json(result);
+  }),
+
+  http.post(apiUrl("/projects/:projectId/designs/:sessionId/messages"), async ({ params, request }) => {
+    const body = await request.json() as { content?: string };
+    if (!body.content?.trim()) return HttpResponse.json({ error: "content is required" }, { status: 400 });
+    const result = getMockDesignEvents(String(params.projectId), String(params.sessionId));
+    if (!result || result.jobStatus !== "running") {
+      return HttpResponse.json({ error: "No active design session is waiting for a reply" }, { status: 409 });
+    }
+    addMockDesignReply(String(params.sessionId), body.content.trim());
+    return HttpResponse.json({}, { status: 201 });
+  }),
+
+  http.post(apiUrl("/projects/:projectId/designs/:sessionId/cancel"), ({ params }) => {
+    const sessionId = String(params.sessionId);
+    const result = getMockDesignEvents(String(params.projectId), sessionId);
+    if (!result) return HttpResponse.json({ error: "Design session not found" }, { status: 404 });
+    result.session.status = "cancelled";
+    return HttpResponse.json({});
   }),
 
   http.post(
