@@ -64,7 +64,7 @@ export function OrgProvidersSettings() {
 
   if (!orgParam) {
     return (
-      <OrgSettingsLayout orgId="" activeTab="/settings/organization/providers">
+      <OrgSettingsLayout orgId="" title="Providers & Models">
         <p className="text-sm text-mist">Select an organization to configure providers.</p>
       </OrgSettingsLayout>
     );
@@ -78,7 +78,11 @@ export function OrgProvidersSettings() {
   }
 
   return (
-    <OrgSettingsLayout orgId={orgParam} activeTab="/settings/organization/providers">
+    <OrgSettingsLayout
+      orgId={orgParam}
+      title="Providers & Models"
+      description="Configured by organization admins. Connected providers and models are available to every project in this organization — other members can pick from them but can't view or change the underlying connection."
+    >
       <Card>
         <CardHeader>
           <CardTitle>Providers &amp; Models</CardTitle>

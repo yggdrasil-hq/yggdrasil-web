@@ -1,10 +1,5 @@
-import { FeatureDetailClient } from "@/components/features/feature-detail-client";
+import { FeatureOverviewRedirect } from "@/components/features/feature-overview-redirect";
 
-interface FeatureDetailPageProps {
-  params: Promise<{ projectId: string; featureId: string }>;
-}
-
-export default async function FeatureDetailPage({ params }: FeatureDetailPageProps) {
-  const { projectId, featureId } = await params;
-  return <FeatureDetailClient projectId={projectId} featureId={featureId} />;
+export default function FeatureDetailPage() {
+  return <FeatureOverviewRedirect />;
 }

@@ -47,14 +47,18 @@ export function OrgSecretsSettings() {
 
   if (!orgParam) {
     return (
-      <OrgSettingsLayout orgId="" activeTab="/settings/organization/secrets">
+      <OrgSettingsLayout orgId="" title="Secrets">
         <p className="text-sm text-mist">Select an organization to configure secrets.</p>
       </OrgSettingsLayout>
     );
   }
 
   return (
-    <OrgSettingsLayout orgId={orgParam} activeTab="/settings/organization/secrets">
+    <OrgSettingsLayout
+      orgId={orgParam}
+      title="Secrets"
+      description="Shared across every project in this organization. A project can reference one of these instead of duplicating it, or add its own project-only secrets in that project's own Settings."
+    >
       <Card>
         <CardHeader>
           <CardTitle>Secrets</CardTitle>

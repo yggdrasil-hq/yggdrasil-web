@@ -15,10 +15,10 @@ interface BuildProgressPanelProps {
 /**
  * Live view of a feature_build job's progress (mirrors SpecGrillPanel's
  * polling approach for spec_grill — a WebSocket relay is still not built,
- * ADR 006 item 8's scope cut). Only rendered by FeatureDetailClient while
- * the feature is 'queued' or 'running'; once the build finishes, fails, or
- * is cancelled, the parent stops rendering this component and polling
- * stops with it.
+ * ADR 006 item 8's scope cut). Only rendered by FeatureImplementationClient
+ * (the Implementation stage page) while the feature is 'queued' or
+ * 'running'; once the build finishes, fails, or is cancelled, the parent
+ * stops rendering this component and polling stops with it.
  *
  * The Orchestrator doesn't relay the agent's turn-by-turn output today
  * (rpc.Translate intentionally leaves plain assistant text untranslated —

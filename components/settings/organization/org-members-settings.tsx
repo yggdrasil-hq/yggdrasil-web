@@ -18,6 +18,7 @@ import {
   fetchOrganizationRoles,
   removeOrgMember,
 } from "@/lib/api";
+import { appPath } from "@/lib/config";
 import { ORG_ROLE_LABELS } from "@/lib/features/types";
 import type { OrgInvite, OrgMember, OrgRole, RolesResponse } from "@/lib/features/types";
 
@@ -48,7 +49,10 @@ export function OrgMembersSettings() {
     setInviteLink(null);
     try {
       const invite = await createOrganizationInvite(orgParam, role);
-      setInviteLink(`${window.location.origin}/organizations/invites/${invite.token}`);
+      // appPath() (not window.location.origin + a bare path) — this deployment
+      // serves the app under NEXT_PUBLIC_BASE_PATH (e.g. /app via nginx), and
+      // a link missing that prefix 404s the moment someone opens it.
+      setInviteLink(`${window.location.origin}${appPath(`/organizations/invites/${invite.token}`)}`);
       await fetchOrganizationInvites(orgParam).then(setInvites);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to create invite.");
@@ -57,14 +61,18 @@ export function OrgMembersSettings() {
 
   if (!orgParam) {
     return (
-      <OrgSettingsLayout orgId="" activeTab="/settings/organization/members">
+      <OrgSettingsLayout orgId="" title="Members">
         <p className="text-sm text-mist">Select an organization to manage members.</p>
       </OrgSettingsLayout>
     );
   }
 
   return (
-    <OrgSettingsLayout orgId={orgParam} activeTab="/settings/organization/members">
+    <OrgSettingsLayout
+      orgId={orgParam}
+      title="Members"
+      description="Everyone with access to this organization's projects, and what they can do."
+    >
       <div className="space-y-6">
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
 

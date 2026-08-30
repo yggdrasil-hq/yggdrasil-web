@@ -1,3 +1,4 @@
+import { ORG_ROLE_LABELS } from "@/lib/features/types";
 import type {
   ActionQueueItem,
   AgenticReview,
@@ -9,13 +10,21 @@ import type {
   FeatureEventsResponse,
   JobStatus,
   Notification,
+  OrgClusterMetadata,
+  OrgInvite,
+  OrgMember,
+  OrgRole,
+  Organization,
   Project,
   ProjectOverview,
   ProjectSecretMetadata,
+  RoleCapability,
+  RolesResponse,
   TestingResults,
   Test,
 } from "@/lib/features/types";
 import type { ActionItem } from "@/lib/api";
+import type { AuthUser } from "@/lib/auth/types";
 import { MOCK_PROJECT_ID } from "@/lib/config";
 
 function computeRepositoryRemovalBlockedReason(project: Project): string | null {
@@ -1133,4 +1142,343 @@ export function updateMockTest(
     updatedAt: new Date().toISOString(),
   };
   return mockTests[index];
+}
+
+// --- Organization / RBAC (ADR 016) ---
+//
+// Previously unmocked entirely: the org settings pages (web/app/settings/
+// organization/**) had no MSW coverage, so `npm run dev` alone could never
+// render them — only the full docker-compose stack with a real API could.
+// These fixtures/handlers close that gap so the org settings surface is
+// visually verifiable the same way every other page already is.
+
+export const mockCurrentUser: AuthUser = {
+  id: "user_saratc",
+  username: "saratc",
+  displayName: "Sarat Chandra",
+  onboardingState: "active",
+  githubLogin: "saratc",
+};
+
+export const mockOrganizations: Organization[] = [
+  {
+    id: "org_personal_saratc",
+    name: "Sarat Chandra",
+    slug: "saratc",
+    description: "Personal organization.",
+    isPersonal: true,
+    status: "ready",
+    role: "admin",
+    createdAt: days(30),
+    updatedAt: days(30),
+  },
+  {
+    id: "org_acme",
+    name: "Acme Retail",
+    slug: "acme-retail",
+    description: "Storefront and internal tooling.",
+    isPersonal: false,
+    status: "ready",
+    role: "admin",
+    createdAt: days(20),
+    updatedAt: days(2),
+  },
+  {
+    id: "org_northwind",
+    name: "Northwind Labs",
+    slug: "northwind-labs",
+    description: "",
+    isPersonal: false,
+    status: "pending_cluster",
+    role: "developer",
+    createdAt: days(6),
+    updatedAt: days(6),
+  },
+];
+
+export function getMockOrganizations(): Organization[] {
+  return mockOrganizations;
+}
+
+export function getMockOrganization(orgId: string): Organization | undefined {
+  return mockOrganizations.find((org) => org.id === orgId);
+}
+
+export function updateMockOrganization(
+  orgId: string,
+  patch: { name?: string; description?: string },
+): Organization | undefined {
+  const org = mockOrganizations.find((o) => o.id === orgId);
+  if (!org) return undefined;
+  if (patch.name !== undefined) org.name = patch.name;
+  if (patch.description !== undefined) org.description = patch.description;
+  org.updatedAt = new Date().toISOString();
+  return org;
+}
+
+const mockOrgMembers: Record<string, OrgMember[]> = {
+  org_personal_saratc: [
+    {
+      userId: "user_saratc",
+      username: "saratc",
+      displayName: "Sarat Chandra",
+      githubLogin: "saratc",
+      role: "admin",
+    },
+  ],
+  org_acme: [
+    {
+      userId: "user_saratc",
+      username: "saratc",
+      displayName: "Sarat Chandra",
+      githubLogin: "saratc",
+      role: "admin",
+    },
+    {
+      userId: "user_jlee",
+      username: "jlee",
+      displayName: "Jamie Lee",
+      githubLogin: "jamielee",
+      role: "developer",
+    },
+    {
+      userId: "user_mrivera",
+      username: "mrivera",
+      displayName: "Mia Rivera",
+      githubLogin: "mrivera-design",
+      role: "designer",
+    },
+  ],
+  org_northwind: [
+    {
+      userId: "user_saratc",
+      username: "saratc",
+      displayName: "Sarat Chandra",
+      githubLogin: "saratc",
+      role: "developer",
+    },
+  ],
+};
+
+export function getMockOrgMembers(orgId: string): OrgMember[] {
+  return mockOrgMembers[orgId] ?? [];
+}
+
+export function changeMockOrgMemberRole(orgId: string, userId: string, role: OrgRole): boolean {
+  const member = (mockOrgMembers[orgId] ?? []).find((m) => m.userId === userId);
+  if (!member) return false;
+  member.role = role;
+  return true;
+}
+
+export function removeMockOrgMember(orgId: string, userId: string): boolean {
+  const members = mockOrgMembers[orgId];
+  if (!members) return false;
+  const index = members.findIndex((m) => m.userId === userId);
+  if (index === -1) return false;
+  members.splice(index, 1);
+  return true;
+}
+
+const mockOrgInvites: Record<string, OrgInvite[]> = {
+  org_personal_saratc: [],
+  org_acme: [],
+  org_northwind: [],
+};
+
+export function getMockOrgInvites(orgId: string): OrgInvite[] {
+  return mockOrgInvites[orgId] ?? [];
+}
+
+export function createMockOrgInvite(orgId: string, role: OrgRole): OrgInvite {
+  const invite: OrgInvite = {
+    id: `invite_${Date.now()}`,
+    organizationId: orgId,
+    token: `tok_${Math.random().toString(36).slice(2, 10)}`,
+    role,
+    createdByUserId: mockCurrentUser.id,
+    createdAt: new Date().toISOString(),
+  };
+  (mockOrgInvites[orgId] ??= []).push(invite);
+  return invite;
+}
+
+export function acceptMockOrgInvite(token: string): Organization | undefined {
+  for (const [orgId, invites] of Object.entries(mockOrgInvites)) {
+    const invite = invites.find((i) => i.token === token);
+    if (!invite) continue;
+    const org = getMockOrganization(orgId);
+    if (!org) return undefined;
+    const members = (mockOrgMembers[orgId] ??= []);
+    if (!members.some((m) => m.userId === mockCurrentUser.id)) {
+      members.push({
+        userId: mockCurrentUser.id,
+        username: mockCurrentUser.username,
+        displayName: mockCurrentUser.displayName,
+        githubLogin: mockCurrentUser.githubLogin,
+        role: invite.role,
+      });
+    }
+    return org;
+  }
+  return undefined;
+}
+
+const mockOrgRoles: OrgRole[] = ["admin", "developer", "designer", "product_manager", "tester"];
+
+const mockRoleCapabilities: RoleCapability[] = [
+  { role: "admin", capability: "Manage members & roles", level: "full" },
+  { role: "developer", capability: "Manage members & roles", level: "none" },
+  { role: "designer", capability: "Manage members & roles", level: "none" },
+  { role: "product_manager", capability: "Manage members & roles", level: "none" },
+  { role: "tester", capability: "Manage members & roles", level: "none" },
+
+  { role: "admin", capability: "Configure providers, secrets & cluster", level: "full" },
+  { role: "developer", capability: "Configure providers, secrets & cluster", level: "none" },
+  { role: "designer", capability: "Configure providers, secrets & cluster", level: "none" },
+  { role: "product_manager", capability: "Configure providers, secrets & cluster", level: "none" },
+  { role: "tester", capability: "Configure providers, secrets & cluster", level: "none" },
+
+  { role: "admin", capability: "Create & configure projects", level: "full" },
+  { role: "developer", capability: "Create & configure projects", level: "full" },
+  { role: "designer", capability: "Create & configure projects", level: "partial" },
+  { role: "product_manager", capability: "Create & configure projects", level: "partial" },
+  { role: "tester", capability: "Create & configure projects", level: "none" },
+
+  { role: "admin", capability: "Approve specs & start builds", level: "full" },
+  { role: "developer", capability: "Approve specs & start builds", level: "full" },
+  { role: "designer", capability: "Approve specs & start builds", level: "none" },
+  { role: "product_manager", capability: "Approve specs & start builds", level: "full" },
+  { role: "tester", capability: "Approve specs & start builds", level: "none" },
+
+  { role: "admin", capability: "Run & review tests", level: "full" },
+  { role: "developer", capability: "Run & review tests", level: "full" },
+  { role: "designer", capability: "Run & review tests", level: "none" },
+  { role: "product_manager", capability: "Run & review tests", level: "partial" },
+  { role: "tester", capability: "Run & review tests", level: "full" },
+];
+
+export function getMockOrganizationRoles(): RolesResponse {
+  return {
+    roles: mockOrgRoles,
+    roleDisplayNames: ORG_ROLE_LABELS,
+    capabilities: mockRoleCapabilities,
+  };
+}
+
+interface MockOrgSecret {
+  id: string;
+  key: string;
+  value: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const mockOrgSecrets: Record<string, MockOrgSecret[]> = {
+  org_personal_saratc: [],
+  org_acme: [
+    {
+      id: "orgsecret_acme_model_base_url",
+      key: "MODEL_BASE_URL",
+      value: "https://api.openai.com/v1",
+      createdAt: days(18),
+      updatedAt: days(2),
+    },
+    {
+      id: "orgsecret_acme_model_api_key",
+      key: "MODEL_API_KEY",
+      value: "sk-mock-acme-key",
+      createdAt: days(18),
+      updatedAt: days(2),
+    },
+    {
+      id: "orgsecret_acme_model_id",
+      key: "MODEL_ID",
+      value: "gpt-4.1",
+      createdAt: days(18),
+      updatedAt: days(2),
+    },
+    {
+      id: "orgsecret_acme_npm_token",
+      key: "NPM_TOKEN",
+      value: "npm_mocktoken",
+      createdAt: days(10),
+      updatedAt: days(10),
+    },
+  ],
+  org_northwind: [],
+};
+
+function toOrgSecretMetadata(secret: MockOrgSecret): ProjectSecretMetadata {
+  return { id: secret.id, key: secret.key, createdAt: secret.createdAt, updatedAt: secret.updatedAt };
+}
+
+export function getMockOrganizationSecrets(orgId: string): ProjectSecretMetadata[] {
+  return (mockOrgSecrets[orgId] ?? []).map(toOrgSecretMetadata);
+}
+
+export function upsertMockOrganizationSecret(
+  orgId: string,
+  key: string,
+  value: string,
+): ProjectSecretMetadata {
+  const secrets = (mockOrgSecrets[orgId] ??= []);
+  const existing = secrets.find((s) => s.key === key);
+  if (existing) {
+    existing.value = value;
+    existing.updatedAt = new Date().toISOString();
+    return toOrgSecretMetadata(existing);
+  }
+  const created: MockOrgSecret = {
+    id: `orgsecret_${orgId}_${key}_${Date.now()}`,
+    key,
+    value,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  secrets.push(created);
+  return toOrgSecretMetadata(created);
+}
+
+export function deleteMockOrganizationSecret(orgId: string, secretId: string): boolean {
+  const secrets = mockOrgSecrets[orgId];
+  if (!secrets) return false;
+  const index = secrets.findIndex((s) => s.id === secretId);
+  if (index === -1) return false;
+  secrets.splice(index, 1);
+  return true;
+}
+
+const mockOrgClusters: Record<string, OrgClusterMetadata | null> = {
+  org_personal_saratc: null,
+  org_acme: {
+    id: "cluster_acme",
+    organizationId: "org_acme",
+    createdAt: days(20),
+    updatedAt: days(20),
+  },
+  org_northwind: null,
+};
+
+export function getMockOrganizationCluster(orgId: string): OrgClusterMetadata | null {
+  return mockOrgClusters[orgId] ?? null;
+}
+
+export function setMockOrganizationCluster(orgId: string): OrgClusterMetadata {
+  const cluster: OrgClusterMetadata = {
+    id: mockOrgClusters[orgId]?.id ?? `cluster_${orgId}_${Date.now()}`,
+    organizationId: orgId,
+    createdAt: mockOrgClusters[orgId]?.createdAt ?? new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  mockOrgClusters[orgId] = cluster;
+  const org = getMockOrganization(orgId);
+  if (org) org.status = "ready";
+  return cluster;
+}
+
+export function clearMockOrganizationCluster(orgId: string): void {
+  mockOrgClusters[orgId] = null;
+  const org = getMockOrganization(orgId);
+  if (org) org.status = "pending_cluster";
 }

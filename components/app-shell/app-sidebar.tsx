@@ -9,10 +9,13 @@ import {
   FlaskConical,
   Home,
   LayoutGrid,
+  LineChart,
   LogOut,
   Palette,
+  Rocket,
   Settings,
   X,
+  Gauge,
 } from "lucide-react";
 import { UserAvatar } from "@/components/auth/user-avatar";
 import { useAuth } from "@/components/providers/auth-provider";
@@ -47,6 +50,24 @@ const navItems = [
     label: "Tests",
     href: (projectId: string) => `/projects/${projectId}/tests`,
     icon: FlaskConical,
+    enabled: true,
+  },
+  {
+    label: "Deployments",
+    href: (projectId: string) => `/projects/${projectId}/deployments`,
+    icon: Rocket,
+    enabled: true,
+  },
+  {
+    label: "Usage",
+    href: (projectId: string) => `/projects/${projectId}/usage`,
+    icon: Gauge,
+    enabled: true,
+  },
+  {
+    label: "Analytics",
+    href: (projectId: string) => `/projects/${projectId}/analytics`,
+    icon: LineChart,
     enabled: true,
   },
 ] as const;

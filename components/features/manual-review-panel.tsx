@@ -19,9 +19,10 @@ interface ManualReviewPanelProps {
  * ADR 015 item 17 / Track B7: Manual Review is a UI grouping of three real
  * feature states — `in_review`, `returned` (the "Changes Requested" tab), and
  * `merged`. Renders PR link + ADR summary per subview. For `returned` the
- * resume control lives in the pre-existing "Returned for changes" banner in
- * FeatureDetailClient, so it is intentionally NOT duplicated here — this
- * panel is a complement (PR + ADR context), not a second resume surface.
+ * resume control lives in the "Returned for changes" banner on the
+ * Implementation stage page (feature-implementation-client.tsx) instead —
+ * this panel (rendered on the Manual Review stage page) is a complement (PR
+ * + ADR context), not a second resume surface.
  */
 export function ManualReviewPanel({ projectId, feature }: ManualReviewPanelProps) {
   const [subview, setSubview] = useState<ManualReviewSubview>(

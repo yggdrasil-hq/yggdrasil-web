@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { OrgSettingsLayout } from "./org-settings-layout";
 import { useOrgParam } from "./use-org-param";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -60,14 +61,22 @@ export function OrgClusterSettings() {
 
   if (!orgParam) {
     return (
-      <OrgSettingsLayout orgId="" activeTab="/settings/organization/cluster">
+      <OrgSettingsLayout orgId="" title="Kubernetes cluster">
         <p className="text-sm text-mist">Select an organization to configure its cluster.</p>
       </OrgSettingsLayout>
     );
   }
 
   return (
-    <OrgSettingsLayout orgId={orgParam} activeTab="/settings/organization/cluster">
+    <OrgSettingsLayout
+      orgId={orgParam}
+      title="Kubernetes cluster"
+      description={
+        org
+          ? `The cluster where ${org.name}'s project jobs and deployments run. Admin only.`
+          : "The cluster where this organization's project jobs and deployments run. Admin only."
+      }
+    >
       <Card>
         <CardHeader>
           <CardTitle>Kubernetes cluster</CardTitle>
@@ -81,16 +90,27 @@ export function OrgClusterSettings() {
           {message ? <p className="text-sm text-bifrost">{message}</p> : null}
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
-          {cluster ? (
-            <p className="text-sm text-mist">
-              Cluster configured ({new Date(cluster.updatedAt).toLocaleDateString()}).
-            </p>
-          ) : null}
+          <p className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-200">
+            Changing the cluster connection affects every project in this organization. Jobs
+            already running are not migrated.
+          </p>
 
           <div className="space-y-2">
-            <label htmlFor="kubeconfig" className="text-sm text-mist">
-              Kubeconfig (stored encrypted)
-            </label>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <label htmlFor="kubeconfig" className="text-sm text-mist">
+                  Kubeconfig (stored encrypted)
+                </label>
+                {cluster ? (
+                  <p className="text-xs text-shadow">
+                    Configured {new Date(cluster.updatedAt).toLocaleDateString()}
+                  </p>
+                ) : null}
+              </div>
+              <Badge variant={cluster ? "default" : "outline"}>
+                {cluster ? "Connected" : "Not configured"}
+              </Badge>
+            </div>
             <textarea
               id="kubeconfig"
               className="min-h-40 w-full rounded-md border border-rime bg-surface-01 px-3 py-2 font-mono text-xs text-frost"

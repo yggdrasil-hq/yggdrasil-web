@@ -18,16 +18,25 @@ export function MswProvider({ children }: { children: React.ReactNode }) {
     let active = true;
 
     async function init() {
-      const { worker } = await import("@/lib/msw/browser");
-      const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
-      await worker.start({
-        onUnhandledRequest: "bypass",
-        serviceWorker: {
-          url: appPath("/mockServiceWorker.js"),
-        },
-      });
-      if (active) {
-        setReady(true);
+      try {
+        const { worker } = await import("@/lib/msw/browser");
+        const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+        await worker.start({
+          onUnhandledRequest: "bypass",
+          serviceWorker: {
+            url: appPath("/mockServiceWorker.js"),
+          },
+        });
+      } catch (error) {
+        // Some environments (sandboxed preview iframes, browsers that block
+        // Service Worker registration) can't register MSW's worker at all.
+        // Don't brick the whole app on "Loading…" forever over it — fall
+        // through and let requests hit the network unmocked instead.
+        console.warn("[MSW] Service Worker registration failed; continuing without mocks.", error);
+      } finally {
+        if (active) {
+          setReady(true);
+        }
       }
     }
 

@@ -27,9 +27,10 @@ interface SpecGrillPanelProps {
  * feature and its job events every POLL_INTERVAL_MS, rather than a
  * WebSocket relay, since that's still a tracked follow-up (item 8's scope
  * cut) — this is the only surface that learns about a running grill's
- * progress today. Only rendered by FeatureDetailClient while the feature is
- * still "draft"; once a submit_adr event flips it to spec_ready, the parent
- * stops rendering this component and polling stops with it.
+ * progress today. Only rendered by FeatureSpecClient (the Spec stage page)
+ * while the feature is still "draft"; once a submit_adr event flips it to
+ * spec_ready, the parent stops rendering this component and polling stops
+ * with it.
  */
 export function SpecGrillPanel({
   projectId,

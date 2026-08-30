@@ -1,14 +1,19 @@
 import { http, HttpResponse } from "msw";
 import { apiUrl } from "@/lib/config";
 import {
+  acceptMockOrgInvite,
   addMockFeature,
   addMockFeatureReply,
   addMockProjectRepository,
   autoResolveMockActionItems,
   cancelMockFeatureGrill,
   addMockDesignReply,
+  changeMockOrgMemberRole,
+  clearMockOrganizationCluster,
   createMockDesignSession,
+  createMockOrgInvite,
   createMockProject,
+  deleteMockOrganizationSecret,
   deleteMockSecret,
   deleteMockUserSecret,
   getMockActionItems,
@@ -18,6 +23,13 @@ import {
   getMockFeatureEvents,
   getMockDesignEvents,
   getMockFeatures,
+  getMockOrgInvites,
+  getMockOrgMembers,
+  getMockOrganization,
+  getMockOrganizationCluster,
+  getMockOrganizationRoles,
+  getMockOrganizationSecrets,
+  getMockOrganizations,
   getMockProject,
   getMockProjects,
   getMockSecrets,
@@ -28,21 +40,26 @@ import {
   addMockTest,
   hasFullModelBundle,
   isMockModelConfigResolvable,
+  mockCurrentUser,
   mockInstallationRepos,
   mockInstallations,
   mockNotifications,
   mockOverview,
+  removeMockOrgMember,
   removeMockProjectRepository,
   resolveMockActionItem,
   resumeMockFeature,
   retryMockFeatureGrill,
+  setMockOrganizationCluster,
   triggerMockDeploy,
   updateMockFeature,
+  updateMockOrganization,
   updateMockTest,
+  upsertMockOrganizationSecret,
   upsertMockSecret,
   upsertMockUserSecret,
 } from "@/lib/msw/fixtures";
-import type { Feature, Test } from "@/lib/features/types";
+import type { Feature, OrgRole, Test } from "@/lib/features/types";
 
 export const handlers = [
   http.get(apiUrl("/github/installations"), () => {
@@ -760,6 +777,133 @@ export const handlers = [
     for (const notification of mockNotifications) {
       notification.readAt = new Date().toISOString();
     }
+    return new HttpResponse(null, { status: 204 });
+  }),
+
+  // --- Auth session (dev-only mock identity) ---
+
+  http.get(apiUrl("/auth/me"), () => {
+    return HttpResponse.json({ user: mockCurrentUser });
+  }),
+
+  // --- Organization / RBAC (ADR 016) ---
+
+  http.get(apiUrl("/organizations"), () => {
+    return HttpResponse.json(getMockOrganizations());
+  }),
+
+  http.get(apiUrl("/organizations/roles"), () => {
+    return HttpResponse.json(getMockOrganizationRoles());
+  }),
+
+  http.post(apiUrl("/organizations/invites/:token/accept"), ({ params }) => {
+    const organization = acceptMockOrgInvite(String(params.token));
+    if (!organization) {
+      return HttpResponse.json({ error: "Invite not found or already used" }, { status: 404 });
+    }
+    return HttpResponse.json({ organization });
+  }),
+
+  http.get(apiUrl("/organizations/:organizationId"), ({ params }) => {
+    const org = getMockOrganization(String(params.organizationId));
+    if (!org) {
+      return HttpResponse.json({ error: "Organization not found" }, { status: 404 });
+    }
+    return HttpResponse.json(org);
+  }),
+
+  http.patch(apiUrl("/organizations/:organizationId"), async ({ params, request }) => {
+    const body = (await request.json()) as { name?: string; description?: string };
+    const org = updateMockOrganization(String(params.organizationId), body);
+    if (!org) {
+      return HttpResponse.json({ error: "Organization not found" }, { status: 404 });
+    }
+    return HttpResponse.json(org);
+  }),
+
+  http.get(apiUrl("/organizations/:organizationId/members"), ({ params }) => {
+    return HttpResponse.json({ members: getMockOrgMembers(String(params.organizationId)) });
+  }),
+
+  http.patch(
+    apiUrl("/organizations/:organizationId/members/:userId"),
+    async ({ params, request }) => {
+      const body = (await request.json()) as { role?: OrgRole };
+      if (!body.role) {
+        return HttpResponse.json({ error: "role is required" }, { status: 400 });
+      }
+      const ok = changeMockOrgMemberRole(
+        String(params.organizationId),
+        String(params.userId),
+        body.role,
+      );
+      if (!ok) {
+        return HttpResponse.json({ error: "Member not found" }, { status: 404 });
+      }
+      return HttpResponse.json({});
+    },
+  ),
+
+  http.delete(apiUrl("/organizations/:organizationId/members/:userId"), ({ params }) => {
+    const ok = removeMockOrgMember(String(params.organizationId), String(params.userId));
+    if (!ok) {
+      return HttpResponse.json({ error: "Member not found" }, { status: 404 });
+    }
+    return new HttpResponse(null, { status: 204 });
+  }),
+
+  http.get(apiUrl("/organizations/:organizationId/invites"), ({ params }) => {
+    return HttpResponse.json({ invites: getMockOrgInvites(String(params.organizationId)) });
+  }),
+
+  http.post(apiUrl("/organizations/:organizationId/invites"), async ({ params, request }) => {
+    const body = (await request.json()) as { role?: OrgRole };
+    if (!body.role) {
+      return HttpResponse.json({ error: "role is required" }, { status: 400 });
+    }
+    const invite = createMockOrgInvite(String(params.organizationId), body.role);
+    return HttpResponse.json(invite, { status: 201 });
+  }),
+
+  http.get(apiUrl("/organizations/:organizationId/secrets"), ({ params }) => {
+    return HttpResponse.json(getMockOrganizationSecrets(String(params.organizationId)));
+  }),
+
+  http.put(apiUrl("/organizations/:organizationId/secrets"), async ({ params, request }) => {
+    const body = (await request.json()) as { key?: string; value?: string };
+    const key = body.key?.trim();
+    if (!key || body.value === undefined) {
+      return HttpResponse.json({ error: "Invalid input" }, { status: 400 });
+    }
+    const secret = upsertMockOrganizationSecret(String(params.organizationId), key, body.value);
+    return HttpResponse.json(secret);
+  }),
+
+  http.delete(
+    apiUrl("/organizations/:organizationId/secrets/:secretId"),
+    ({ params }) => {
+      const deleted = deleteMockOrganizationSecret(
+        String(params.organizationId),
+        String(params.secretId),
+      );
+      if (!deleted) {
+        return HttpResponse.json({ error: "Secret not found" }, { status: 404 });
+      }
+      return new HttpResponse(null, { status: 204 });
+    },
+  ),
+
+  http.get(apiUrl("/organizations/:organizationId/cluster"), ({ params }) => {
+    return HttpResponse.json({ cluster: getMockOrganizationCluster(String(params.organizationId)) });
+  }),
+
+  http.put(apiUrl("/organizations/:organizationId/cluster"), ({ params }) => {
+    const cluster = setMockOrganizationCluster(String(params.organizationId));
+    return HttpResponse.json({ cluster });
+  }),
+
+  http.delete(apiUrl("/organizations/:organizationId/cluster"), ({ params }) => {
+    clearMockOrganizationCluster(String(params.organizationId));
     return new HttpResponse(null, { status: 204 });
   }),
 ];

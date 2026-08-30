@@ -45,7 +45,7 @@ export function OrgGeneralSettings() {
 
   if (!orgParam) {
     return (
-      <OrgSettingsLayout orgId="" activeTab="/settings/organization/general">
+      <OrgSettingsLayout orgId="" title="General">
         <p className="text-sm text-mist">Select an organization to configure.</p>
       </OrgSettingsLayout>
     );
@@ -64,12 +64,15 @@ export function OrgGeneralSettings() {
   }
 
   return (
-    <OrgSettingsLayout orgId={orgParam} activeTab="/settings/organization/general">
+    <OrgSettingsLayout
+      orgId={orgParam}
+      title="General"
+      description={org ? `Basic information about ${org.name}.` : "Basic information about this organization."}
+    >
       <Card>
         <CardHeader>
           <CardTitle>General</CardTitle>
           <CardDescription>
-            Basic information about this organization.{" "}
             <span className="text-frost">
               Status: {org?.status === "ready" ? "ready" : "cluster not configured"}
             </span>
@@ -78,11 +81,20 @@ export function OrgGeneralSettings() {
         <div className="space-y-4 px-4 pb-4">
           {message ? <p className="text-sm text-bifrost">{message}</p> : null}
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
-          <div className="space-y-2">
-            <label htmlFor="orgName" className="text-sm text-mist">
-              Name
-            </label>
-            <Input id="orgName" value={name} onChange={(e) => setName(e.target.value)} />
+          <div className="flex flex-wrap gap-4">
+            <div className="min-w-[220px] flex-1 space-y-2">
+              <label htmlFor="orgName" className="text-sm text-mist">
+                Name
+              </label>
+              <Input id="orgName" value={name} onChange={(e) => setName(e.target.value)} />
+            </div>
+            <div className="min-w-[220px] flex-1 space-y-2">
+              <label htmlFor="orgSlug" className="text-sm text-mist">
+                Slug
+              </label>
+              <Input id="orgSlug" value={org?.slug ?? ""} disabled className="opacity-60" />
+              <p className="text-xs text-shadow">Used in URLs. Permanent.</p>
+            </div>
           </div>
           <div className="space-y-2">
             <label htmlFor="orgDesc" className="text-sm text-mist">

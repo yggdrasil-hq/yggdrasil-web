@@ -1,5 +1,10 @@
+import { Suspense } from "react";
 import { OrgClusterSettings } from "@/components/settings/organization/org-cluster-settings";
 
 export default function OrganizationClusterPage() {
-  return <OrgClusterSettings />;
+  return (
+    <Suspense>
+      <OrgClusterSettings />
+    </Suspense>
+  );
 }
