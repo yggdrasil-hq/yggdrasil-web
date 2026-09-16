@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/app-shell/app-shell";
@@ -13,6 +14,14 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -22,14 +31,17 @@ import { Select } from "@/components/ui/select";
 import {
   addProjectRepository,
   clearProjectJobModelOverride,
+  deleteProject,
   deleteProjectSecret,
   fetchOrgModels,
   fetchProject,
   fetchProjectJobModelOverrides,
   fetchProjectSecrets,
+  ProjectDeletionBlockedError,
   removeProjectRepository,
   setProjectJobModelOverride,
   upsertProjectSecret,
+  type ProjectDeletionBlocker,
 } from "@/lib/api";
 import { ModelSecretField } from "@/components/settings/model-secret-field";
 import { appRoute } from "@/lib/config";
@@ -86,6 +98,7 @@ const MODEL_SECRET_FIELDS: Array<{
 ];
 
 export function ProjectSettingsClient({ projectId }: ProjectSettingsClientProps) {
+  const router = useRouter();
   const [project, setProject] = useState<Project | null>(null);
   const [secrets, setSecrets] = useState<ProjectSecretMetadata[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -96,6 +109,11 @@ export function ProjectSettingsClient({ projectId }: ProjectSettingsClientProps)
   const [confirmRemoveRepositoryId, setConfirmRemoveRepositoryId] = useState<string | null>(
     null,
   );
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleteBlocker, setDeleteBlocker] = useState<ProjectDeletionBlocker | null>(null);
   // Whether this project has its own model-config bundle or inherits the
   // account default (ADR 007) — derived once from the loaded secrets, then
   // toggled locally by "Switch to custom" before any field has been saved.
@@ -247,6 +265,28 @@ export function ProjectSettingsClient({ projectId }: ProjectSettingsClientProps)
       );
     } finally {
       setRemovingRepositoryId(null);
+    }
+  }
+
+  async function handleDeleteProject() {
+    setDeleting(true);
+    setDeleteError(null);
+    setDeleteBlocker(null);
+
+    try {
+      await deleteProject(projectId);
+      router.push(appRoute("/projects"));
+    } catch (deleteProjectError) {
+      if (deleteProjectError instanceof ProjectDeletionBlockedError) {
+        setDeleteBlocker(deleteProjectError.blocker);
+      } else {
+        setDeleteError(
+          deleteProjectError instanceof Error
+            ? deleteProjectError.message
+            : "Failed to delete project",
+        );
+      }
+      setDeleting(false);
     }
   }
 
@@ -593,8 +633,127 @@ export function ProjectSettingsClient({ projectId }: ProjectSettingsClientProps)
               </CardDescription>
             </CardHeader>
           </Card>
+
+          <Card className="border-destructive/50">
+            <CardHeader>
+              <CardTitle>Danger zone</CardTitle>
+              <CardDescription>
+                Deleting this project permanently removes its features, tests, runs, and
+                secrets. This cannot be undone.
+              </CardDescription>
+            </CardHeader>
+            <div className="flex justify-end px-6 pb-6">
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  setDeleteDialogOpen(true);
+                  setDeleteConfirmText("");
+                  setDeleteError(null);
+                  setDeleteBlocker(null);
+                }}
+              >
+                Delete project
+              </Button>
+            </div>
+          </Card>
         </div>
       </AppShell>
+
+      <Dialog
+        open={deleteDialogOpen}
+        onOpenChange={(open) => {
+          if (!deleting) {
+            setDeleteDialogOpen(open);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete {project.name}</DialogTitle>
+            <DialogDescription>
+              This will permanently delete the <strong>{project.name}</strong> project,
+              including all of its features, tests, runs, and secrets. This action cannot
+              be undone.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2">
+            <label htmlFor="delete-confirm" className="text-sm text-mist">
+              Type <span className="font-mono font-semibold text-frost">delete</span> to
+              confirm.
+            </label>
+            <Input
+              id="delete-confirm"
+              autoComplete="off"
+              value={deleteConfirmText}
+              onChange={(event) => setDeleteConfirmText(event.target.value)}
+              disabled={deleting}
+            />
+            {deleteError ? <p className="text-sm text-destructive">{deleteError}</p> : null}
+            {deleteBlocker ? (
+              <div className="space-y-2">
+                <p className="text-sm text-destructive">{deleteBlocker.reason}</p>
+                {deleteBlocker.features.length > 0 ? (
+                  <ul className="space-y-1">
+                    {deleteBlocker.features.map((feature) => (
+                      <li key={feature.id} className="text-sm">
+                        <Link
+                          href={appRoute(
+                            `/projects/${projectId}/features/${feature.id}`,
+                          )}
+                          className="text-primary hover:underline"
+                        >
+                          {feature.title}
+                        </Link>{" "}
+                        <span className="text-mist">— {feature.status}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                {deleteBlocker.testRuns.length > 0 ? (
+                  <ul className="space-y-1">
+                    {deleteBlocker.testRuns.map((testRun) =>
+                      testRun.testId ? (
+                        <li key={testRun.jobId} className="text-sm">
+                          <Link
+                            href={appRoute(
+                              `/projects/${projectId}/tests/${testRun.testId}`,
+                            )}
+                            className="text-primary hover:underline"
+                          >
+                            View active test run
+                          </Link>
+                        </li>
+                      ) : (
+                        <li key={testRun.jobId} className="text-sm text-mist">
+                          An active test run is still going.
+                        </li>
+                      ),
+                    )}
+                  </ul>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteDialogOpen(false)}
+              disabled={deleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={deleteConfirmText !== "delete" || deleting}
+              onClick={handleDeleteProject}
+            >
+              {deleting ? "Deleting…" : "Delete project"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </TooltipProvider>
   );
 }

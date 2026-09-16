@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Markdown } from "@/components/markdown";
 import {
-  cancelFeatureGrill,
+  cancelFeature,
   fetchFeature,
   fetchFeatureEvents,
   retryFeatureGrill,
@@ -40,6 +40,7 @@ export function SpecGrillPanel({
 }: SpecGrillPanelProps) {
   const [events, setEvents] = useState<FeatureEvent[]>([]);
   const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
+  const [lastError, setLastError] = useState<string | null>(null);
   const [replyDraft, setReplyDraft] = useState("");
   const [sendingReply, setSendingReply] = useState(false);
   const [cancelling, setCancelling] = useState(false);
@@ -60,6 +61,7 @@ export function SpecGrillPanel({
         onFeatureChange(featureData);
         setEvents(eventsData.events);
         setJobStatus(eventsData.jobStatus);
+        setLastError(eventsData.lastError);
         setPolled(true);
       } catch {
         // Transient poll failures are ignored: the next tick retries, and
@@ -99,7 +101,8 @@ export function SpecGrillPanel({
     setCancelling(true);
     setActionError(null);
     try {
-      await cancelFeatureGrill(projectId, featureId);
+      const updated = await cancelFeature(projectId, featureId);
+      onFeatureChange(updated);
     } catch (error) {
       setActionError(
         error instanceof Error ? error.message : "Failed to cancel grill session",
@@ -116,6 +119,7 @@ export function SpecGrillPanel({
       await retryFeatureGrill(projectId, featureId);
       setEvents([]);
       setJobStatus(null);
+      setLastError(null);
     } catch (error) {
       setActionError(
         error instanceof Error ? error.message : "Failed to retry grill session",
@@ -198,6 +202,7 @@ export function SpecGrillPanel({
       {stopped && (
         <p className="mt-4 text-sm text-red-400">
           Grill session {jobStatus === "cancelled" ? "cancelled" : "failed"}.
+          {jobStatus === "failed" && lastError ? ` ${lastError}` : ""}
         </p>
       )}
 

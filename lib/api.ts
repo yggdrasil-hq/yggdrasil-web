@@ -37,6 +37,34 @@ async function parseJson<T>(response: Response): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+export interface BlockingFeature {
+  id: string;
+  title: string;
+  slug: string;
+  status: string;
+}
+
+export interface BlockingTestRun {
+  jobId: string;
+  testId: string | null;
+}
+
+export interface ProjectDeletionBlocker {
+  reason: string;
+  features: BlockingFeature[];
+  testRuns: BlockingTestRun[];
+}
+
+export class ProjectDeletionBlockedError extends Error {
+  readonly blocker: ProjectDeletionBlocker;
+
+  constructor(blocker: ProjectDeletionBlocker) {
+    super(blocker.reason);
+    this.name = "ProjectDeletionBlockedError";
+    this.blocker = blocker;
+  }
+}
+
 export async function fetchProjects(): Promise<Project[]> {
   const response = await fetch(apiUrl("/projects"), {
     cache: "no-store",
@@ -129,6 +157,28 @@ export async function removeProjectRepository(
     credentials: "include",
   });
   return parseJson<Project>(response);
+}
+
+export async function deleteProject(projectId: string): Promise<void> {
+  const response = await fetch(apiUrl(`/projects/${projectId}`), {
+    method: "DELETE",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ confirm: "delete" }),
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as
+      | { error?: string; features?: BlockingFeature[]; testRuns?: BlockingTestRun[] }
+      | null;
+    if (response.status === 409 && body?.error) {
+      throw new ProjectDeletionBlockedError({
+        reason: body.error,
+        features: body.features ?? [],
+        testRuns: body.testRuns ?? [],
+      });
+    }
+    throw new Error(body?.error ?? `API error: ${response.status} ${response.statusText}`);
+  }
 }
 
 export async function completeProjectInit(projectId: string): Promise<Project> {
@@ -480,12 +530,20 @@ export async function sendFeatureMessage(
   await parseJson<unknown>(response);
 }
 
-export async function cancelFeatureGrill(projectId: string, featureId: string): Promise<void> {
+export async function cancelFeature(projectId: string, featureId: string): Promise<Feature> {
   const response = await fetch(apiUrl(`/projects/${projectId}/features/${featureId}/cancel`), {
     method: "POST",
     credentials: "include",
   });
-  await parseJson<unknown>(response);
+  return parseJson<Feature>(response);
+}
+
+export async function restartFeature(projectId: string, featureId: string): Promise<Feature> {
+  const response = await fetch(apiUrl(`/projects/${projectId}/features/${featureId}/restart`), {
+    method: "POST",
+    credentials: "include",
+  });
+  return parseJson<Feature>(response);
 }
 
 export interface CreateDesignInput {

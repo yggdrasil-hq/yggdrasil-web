@@ -7,7 +7,7 @@ import { StatusBadge } from "@/components/features/status-badge";
 import { FeatureStageTabs } from "@/components/features/feature-stage-tabs";
 import { FeatureDetailProvider } from "@/components/features/feature-detail-context";
 import { Button } from "@/components/ui/button";
-import { fetchFeature, fetchProject } from "@/lib/api";
+import { cancelFeature, fetchFeature, fetchProject, restartFeature } from "@/lib/api";
 import type { Feature, Project } from "@/lib/features/types";
 import { featureStageForStatus } from "@/lib/features/stage";
 import { appRoute } from "@/lib/config";
@@ -38,6 +38,10 @@ export function FeatureDetailLayout({ projectId, featureId, children }: FeatureD
   const [project, setProject] = useState<Project | null>(null);
   const [feature, setFeature] = useState<Feature | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [restarting, setRestarting] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -70,6 +74,41 @@ export function FeatureDetailLayout({ projectId, featureId, children }: FeatureD
     setFeature(updated);
   }, []);
 
+  async function handleForceCancel() {
+    if (!confirmingCancel) {
+      setConfirmingCancel(true);
+      return;
+    }
+    setCancelling(true);
+    setActionError(null);
+    try {
+      const updated = await cancelFeature(projectId, featureId);
+      setFeature(updated);
+    } catch (cancelError) {
+      setActionError(
+        cancelError instanceof Error ? cancelError.message : "Failed to cancel feature",
+      );
+    } finally {
+      setCancelling(false);
+      setConfirmingCancel(false);
+    }
+  }
+
+  async function handleRestart() {
+    setRestarting(true);
+    setActionError(null);
+    try {
+      const updated = await restartFeature(projectId, featureId);
+      setFeature(updated);
+    } catch (restartError) {
+      setActionError(
+        restartError instanceof Error ? restartError.message : "Failed to restart feature",
+      );
+    } finally {
+      setRestarting(false);
+    }
+  }
+
   if (error && !feature) {
     return (
       <div className="flex min-h-screen items-center justify-center text-mist">{error}</div>
@@ -93,12 +132,49 @@ export function FeatureDetailLayout({ projectId, featureId, children }: FeatureD
           <Button variant="ghost" className="w-fit px-0 text-mist hover:text-frost" asChild>
             <Link href={appRoute(`/projects/${projectId}/features`)}>← Back to features</Link>
           </Button>
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-            <h1 className="text-xl font-semibold tracking-tight text-frost sm:text-2xl">
-              {feature.title}
-            </h1>
-            <StatusBadge status={feature.status} />
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+              <h1 className="text-xl font-semibold tracking-tight text-frost sm:text-2xl">
+                {feature.title}
+              </h1>
+              <StatusBadge status={feature.status} />
+            </div>
+
+            {feature.status !== "cancelled" && feature.status !== "merged" ? (
+              <div className="flex items-center gap-2">
+                {confirmingCancel ? (
+                  <span className="text-sm text-mist">Cancel this feature?</span>
+                ) : null}
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  disabled={cancelling}
+                  onClick={() => void handleForceCancel()}
+                >
+                  {cancelling
+                    ? "Cancelling…"
+                    : confirmingCancel
+                      ? "Confirm cancel"
+                      : "Force cancel"}
+                </Button>
+                {confirmingCancel ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={cancelling}
+                    onClick={() => setConfirmingCancel(false)}
+                  >
+                    Back
+                  </Button>
+                ) : null}
+              </div>
+            ) : feature.status === "cancelled" ? (
+              <Button size="sm" disabled={restarting} onClick={() => void handleRestart()}>
+                {restarting ? "Restarting…" : "Restart feature"}
+              </Button>
+            ) : null}
           </div>
+          {actionError ? <p className="text-sm text-red-400">{actionError}</p> : null}
         </div>
       </header>
 

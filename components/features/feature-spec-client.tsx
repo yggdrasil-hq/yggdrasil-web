@@ -118,7 +118,10 @@ export function FeatureSpecClient() {
       {feature.status === "cancelled" && !feature.adrApproved && (
         <section className="rounded-card border border-rime bg-surface-01 p-6">
           <h2 className="text-base font-semibold text-frost">This feature was cancelled</h2>
-          <p className="mt-1 text-sm text-mist">The spec grill session was stopped.</p>
+          <p className="mt-1 text-sm text-mist">
+            The spec grill session was stopped. Use "Restart feature" above to start a fresh
+            grill session.
+          </p>
         </section>
       )}
 
