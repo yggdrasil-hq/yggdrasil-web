@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { OrgSettingsLayout } from "./org-settings-layout";
 import { useOrgParam } from "./use-org-param";
+import { AlertCircle, CheckCircle2 } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,6 +18,8 @@ import {
   fetchOrganization,
   fetchOrganizationCluster,
   setOrganizationCluster,
+  testOrganizationCluster,
+  type ProviderConnectionTestResult,
 } from "@/lib/api";
 import type { OrgClusterMetadata, Organization } from "@/lib/features/types";
 
@@ -26,14 +30,37 @@ export function OrgClusterSettings() {
   const [kubeconfig, setKubeconfig] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<ProviderConnectionTestResult | null>(null);
+  const [editing, setEditing] = useState(false);
 
   function load() {
     if (!orgParam) return;
     fetchOrganization(orgParam).then(setOrg).catch(() => undefined);
-    fetchOrganizationCluster(orgParam).then(setCluster).catch(() => undefined);
+    fetchOrganizationCluster(orgParam)
+      .then((fetched) => {
+        setCluster(fetched);
+        setEditing(!fetched);
+      })
+      .catch(() => undefined);
   }
 
   useEffect(load, [orgParam]);
+
+  function startEditing() {
+    setKubeconfig("");
+    setError(null);
+    setMessage(null);
+    setTestResult(null);
+    setEditing(true);
+  }
+
+  function cancelEditing() {
+    setKubeconfig("");
+    setError(null);
+    setTestResult(null);
+    setEditing(false);
+  }
 
   async function saveCluster() {
     setError(null);
@@ -41,10 +68,28 @@ export function OrgClusterSettings() {
     try {
       await setOrganizationCluster(orgParam, kubeconfig);
       setKubeconfig("");
+      setTestResult(null);
+      setEditing(false);
       await load();
       setMessage("Cluster configured — this organization can now create projects.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to save cluster.");
+    }
+  }
+
+  async function testCluster() {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const result = await testOrganizationCluster(orgParam, kubeconfig || undefined);
+      setTestResult(result);
+    } catch (err) {
+      setTestResult({
+        ok: false,
+        error: err instanceof Error ? err.message : "Connection test failed",
+      });
+    } finally {
+      setTesting(false);
     }
   }
 
@@ -90,10 +135,12 @@ export function OrgClusterSettings() {
           {message ? <p className="text-sm text-bifrost">{message}</p> : null}
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
-          <p className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-200">
-            Changing the cluster connection affects every project in this organization. Jobs
-            already running are not migrated.
-          </p>
+          {editing && cluster ? (
+            <p className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-200">
+              Changing the cluster connection affects every project in this organization. Jobs
+              already running are not migrated.
+            </p>
+          ) : null}
 
           <div className="space-y-2">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -111,23 +158,58 @@ export function OrgClusterSettings() {
                 {cluster ? "Connected" : "Not configured"}
               </Badge>
             </div>
-            <textarea
-              id="kubeconfig"
-              className="min-h-40 w-full rounded-md border border-rime bg-surface-01 px-3 py-2 font-mono text-xs text-frost"
-              placeholder={"apiVersion: v1\nkind: Config\nclusters: [...]"}
-              value={kubeconfig}
-              onChange={(e) => setKubeconfig(e.target.value)}
-            />
-          </div>
-          <div className="flex gap-3">
-            <Button onClick={() => void saveCluster()}>
-              {cluster ? "Update cluster" : "Configure cluster"}
-            </Button>
-            {cluster ? (
-              <Button variant="outline" onClick={() => void clearCluster()}>
-                Clear configuration
-              </Button>
+            {editing ? (
+              <textarea
+                id="kubeconfig"
+                className="min-h-40 w-full rounded-md border border-rime bg-surface-01 px-3 py-2 font-mono text-xs text-frost"
+                placeholder={"apiVersion: v1\nkind: Config\nclusters: [...]"}
+                value={kubeconfig}
+                onChange={(e) => {
+                  setKubeconfig(e.target.value);
+                  setTestResult(null);
+                }}
+              />
             ) : null}
+          </div>
+
+          {testResult ? (
+            <Alert variant={testResult.ok ? "success" : "destructive"}>
+              {testResult.ok ? <CheckCircle2 /> : <AlertCircle />}
+              <AlertDescription>
+                {testResult.ok ? "Connection succeeded" : testResult.error ?? "Connection failed"}
+              </AlertDescription>
+            </Alert>
+          ) : null}
+
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <Button
+              variant="outline"
+              disabled={testing || (!kubeconfig && !cluster)}
+              onClick={() => void testCluster()}
+            >
+              {testing ? "Testing…" : "Test connection"}
+            </Button>
+            <div className="flex gap-3">
+              {editing ? (
+                <>
+                  {cluster ? (
+                    <Button variant="ghost" onClick={cancelEditing}>
+                      Cancel
+                    </Button>
+                  ) : null}
+                  <Button onClick={() => void saveCluster()}>
+                    {cluster ? "Update cluster" : "Configure cluster"}
+                  </Button>
+                </>
+              ) : (
+                <Button onClick={startEditing}>Update configuration</Button>
+              )}
+              {cluster ? (
+                <Button variant="outline" onClick={() => void clearCluster()}>
+                  Clear configuration
+                </Button>
+              ) : null}
+            </div>
           </div>
         </div>
       </Card>

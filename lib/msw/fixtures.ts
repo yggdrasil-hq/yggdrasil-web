@@ -233,6 +233,7 @@ export const mockFeatures: Feature[] = [
 
 export const mockProject: Project = withRepositoryRemovalBlockedReason({
   id: MOCK_PROJECT_ID,
+  organizationId: "org_mock_acme",
   name: "Acme Web App",
   slug: "acme-web-app",
   description: "Customer dashboard and billing portal for Acme Corp.",
@@ -541,6 +542,7 @@ export function createMockProject(input: {
 
   const project: Project = {
     id,
+    organizationId: "org_mock_acme",
     name: input.name,
     slug,
     description: input.description,

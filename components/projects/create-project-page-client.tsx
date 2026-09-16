@@ -21,18 +21,17 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   createProject,
-  fetchAccountSecrets,
   fetchFeatures,
   fetchGithubAccess,
   fetchInstallationConfigureUrl,
+  fetchOrganizations,
 } from "@/lib/api";
-import { hasFullModelConfigBundle } from "@/lib/features/types";
-import type { GithubAccessResponse, ProjectSecretMetadata } from "@/lib/features/types";
+import type { GithubAccessResponse } from "@/lib/features/types";
 import { appRoute, githubInstallStartUrl, oauthStartUrl } from "@/lib/config";
 import { filterRepos } from "@/lib/projects/filter-repos";
+import { useOrgParam } from "@/components/settings/organization/use-org-param";
 
-type WizardStep = "details" | "repos" | "agent";
-type AgentMode = "default" | "custom";
+type WizardStep = "details" | "repos";
 
 export function CreateProjectPageClient() {
   const router = useRouter();
@@ -50,15 +49,8 @@ export function CreateProjectPageClient() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const [accountSecrets, setAccountSecrets] = useState<ProjectSecretMetadata[] | null>(null);
-  const [loadingAccountSecrets, setLoadingAccountSecrets] = useState(false);
-  const [agentMode, setAgentMode] = useState<AgentMode>("default");
-  const [modelBaseUrl, setModelBaseUrl] = useState("");
-  const [modelApiKey, setModelApiKey] = useState("");
-  const [modelId, setModelId] = useState("");
-  const [saveAsDefault, setSaveAsDefault] = useState(true);
-
-  const hasAccountDefault = accountSecrets !== null && hasFullModelConfigBundle(accountSecrets);
+  const orgParam = useOrgParam();
+  const [resolvedOrgId, setResolvedOrgId] = useState<string | null>(null);
 
   const loadAccess = useCallback((force = false) => {
     setLoading(true);
@@ -95,25 +87,26 @@ export function CreateProjectPageClient() {
     void loadAccess();
   }, [step, hasAttemptedLoad, loadAccess]);
 
-  // Checked once, when the wizard first reaches the agent step — determines
-  // whether "use my default" is even offered (ADR 007).
+  // Resolved once, on the repos step — this wizard has no org picker of its
+  // own, so we resolve the target org the same way the API does when
+  // `organizationId` is omitted from POST /projects (routes.ts's
+  // resolveOrgForProject): an explicit `?org=` override if present, else the
+  // user's personal org, else their first org. Passed explicitly on create
+  // so the project lands in the org the user actually expects (every
+  // project inherits that org's per-job-kind model defaults per ADR 018;
+  // project-specific overrides happen afterward in Project settings).
   useEffect(() => {
-    if (step !== "agent" || accountSecrets !== null) return;
-    setLoadingAccountSecrets(true);
-    fetchAccountSecrets()
-      .then((secrets) => {
-        setAccountSecrets(secrets);
-        const hasDefault = hasFullModelConfigBundle(secrets);
-        setAgentMode(hasDefault ? "default" : "custom");
-        setSaveAsDefault(!hasDefault);
+    if (step !== "repos" || resolvedOrgId) return;
+    fetchOrganizations()
+      .then((orgs) => {
+        const org =
+          (orgParam && orgs.find((o) => o.id === orgParam)) ||
+          orgs.find((o) => o.isPersonal) ||
+          orgs[0];
+        if (org) setResolvedOrgId(org.id);
       })
-      .catch(() => {
-        setAccountSecrets([]);
-        setAgentMode("custom");
-        setSaveAsDefault(true);
-      })
-      .finally(() => setLoadingAccountSecrets(false));
-  }, [step, accountSecrets]);
+      .catch(() => undefined);
+  }, [step, resolvedOrgId, orgParam]);
 
   // After a fresh install, pre-select a repo from the installation we just landed from.
   useEffect(() => {
@@ -193,28 +186,10 @@ export function CreateProjectPageClient() {
       )
     : [];
 
-  function continueToAgent(event: React.FormEvent) {
-    event.preventDefault();
-    if (!selectedInstallationId || !primaryRepoRecord) {
-      setError("Select a primary repository.");
-      return;
-    }
-    setError(null);
-    setStep("agent");
-  }
-
   async function handleCreate(event: React.FormEvent) {
     event.preventDefault();
     if (!selectedInstallationId || !primaryRepoRecord) {
       setError("Select a primary repository.");
-      return;
-    }
-
-    if (
-      agentMode === "custom" &&
-      (!modelBaseUrl.trim() || !modelApiKey.trim() || !modelId.trim())
-    ) {
-      setError("Fill in all three model configuration fields.");
       return;
     }
 
@@ -241,17 +216,8 @@ export function CreateProjectPageClient() {
         name: name.trim(),
         description: description.trim(),
         installationId: selectedInstallationId,
+        organizationId: resolvedOrgId ?? undefined,
         repositories,
-        ...(agentMode === "custom"
-          ? {
-              modelConfig: {
-                modelBaseUrl: modelBaseUrl.trim(),
-                modelApiKey: modelApiKey.trim(),
-                modelId: modelId.trim(),
-              },
-              saveModelConfigAsDefault: saveAsDefault,
-            }
-          : {}),
       });
 
       const features = await fetchFeatures(project.id);
@@ -326,7 +292,7 @@ export function CreateProjectPageClient() {
       ) : null}
 
       {step === "repos" ? (
-        <form onSubmit={continueToAgent} className="space-y-6">
+        <form onSubmit={(event) => void handleCreate(event)} className="space-y-6">
           <Card>
             <CardHeader className="flex flex-row items-start justify-between gap-4">
               <div>
@@ -464,117 +430,10 @@ export function CreateProjectPageClient() {
           {error ? <p className="text-sm text-red-400">{error}</p> : null}
 
           <div className="flex flex-wrap gap-3">
-            <Button type="submit" disabled={!primaryRepo}>
-              Continue
-            </Button>
-            <Button type="button" variant="ghost" onClick={() => setStep("details")}>
-              Back
-            </Button>
-          </div>
-        </form>
-      ) : null}
-
-      {step === "agent" ? (
-        <form onSubmit={(event) => void handleCreate(event)} className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Model configuration</CardTitle>
-              <CardDescription>
-                Choose the model backend the Pi agent uses for this project&apos;s jobs.
-              </CardDescription>
-            </CardHeader>
-            <div className="space-y-4 px-4 pb-4">
-              {loadingAccountSecrets ? (
-                <p className="text-sm text-mist">Checking your account default…</p>
-              ) : (
-                <>
-                  {hasAccountDefault ? (
-                    <div className="space-y-2">
-                      <label className="flex items-center gap-2 text-sm text-frost">
-                        <input
-                          type="radio"
-                          name="agent-mode"
-                          checked={agentMode === "default"}
-                          onChange={() => setAgentMode("default")}
-                        />
-                        Use my default model configuration
-                      </label>
-                      <label className="flex items-center gap-2 text-sm text-frost">
-                        <input
-                          type="radio"
-                          name="agent-mode"
-                          checked={agentMode === "custom"}
-                          onChange={() => setAgentMode("custom")}
-                        />
-                        Configure a different agent for this project
-                      </label>
-                    </div>
-                  ) : (
-                    <p className="text-sm text-mist">
-                      You don&apos;t have a default model configuration yet — set one up for
-                      this project below.
-                    </p>
-                  )}
-
-                  {agentMode === "custom" ? (
-                    <div className="space-y-3 rounded-md border border-dashed border-rime p-3">
-                      <div className="space-y-2">
-                        <label htmlFor="model-base-url" className="text-sm font-medium text-frost">
-                          Model base URL
-                        </label>
-                        <Input
-                          id="model-base-url"
-                          value={modelBaseUrl}
-                          onChange={(event) => setModelBaseUrl(event.target.value)}
-                          placeholder="https://api.openai.com/v1"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label htmlFor="model-api-key" className="text-sm font-medium text-frost">
-                          Model API key
-                        </label>
-                        <Input
-                          id="model-api-key"
-                          type="password"
-                          autoComplete="off"
-                          value={modelApiKey}
-                          onChange={(event) => setModelApiKey(event.target.value)}
-                          placeholder="sk-…"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label htmlFor="model-id" className="text-sm font-medium text-frost">
-                          Model ID
-                        </label>
-                        <Input
-                          id="model-id"
-                          value={modelId}
-                          onChange={(event) => setModelId(event.target.value)}
-                          placeholder="gpt-4.1"
-                        />
-                      </div>
-                      <label className="flex items-center gap-2 text-sm text-mist">
-                        <input
-                          type="checkbox"
-                          checked={saveAsDefault}
-                          onChange={(event) => setSaveAsDefault(event.target.checked)}
-                        />
-                        Also save this as my account default
-                      </label>
-                    </div>
-                  ) : null}
-                </>
-              )}
-            </div>
-          </Card>
-
-          {error ? <p className="text-sm text-red-400">{error}</p> : null}
-
-          <div className="flex flex-wrap gap-3">
-            <Button type="submit" disabled={submitting || loadingAccountSecrets}>
+            <Button type="submit" disabled={!primaryRepo || submitting}>
               {submitting ? "Creating…" : "Create project"}
             </Button>
-            <Button type="button" variant="ghost" onClick={() => setStep("repos")}>
+            <Button type="button" variant="ghost" onClick={() => setStep("details")}>
               Back
             </Button>
           </div>

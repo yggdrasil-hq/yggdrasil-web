@@ -1,11 +1,13 @@
 import { apiUrl } from "@/lib/config";
 import type {
+  AgentJobKind,
   DeployStatus,
   DesignEventsResponse,
   DesignSession,
   Feature,
   FeatureEventsResponse,
   GithubAccessResponse,
+  JobModelDefault,
   ModelConfigInput,
   Notification,
   NotificationsResponse,
@@ -13,10 +15,14 @@ import type {
   Organization,
   OrgInvite,
   OrgMember,
+  OrgModel,
+  OrgProvider,
   OrgRole,
   Project,
+  ProjectJobModelOverride,
   ProjectOverview,
   ProjectSecretMetadata,
+  ProviderType,
   RolesResponse,
   Test,
   AgenticReview,
@@ -202,34 +208,187 @@ export async function deleteProjectSecret(
   }
 }
 
-/** Account-level default model configuration (ADR 007) — resolved as a fallback for projects with no override. */
-export async function fetchAccountSecrets(): Promise<ProjectSecretMetadata[]> {
-  const response = await fetch(apiUrl("/settings/secrets"), {
+// --- ADR 018: org providers, model catalog, per-job-kind defaults ---
+
+export async function fetchOrgProviders(organizationId: string): Promise<OrgProvider[]> {
+  const response = await fetch(apiUrl(`/organizations/${organizationId}/providers`), {
     cache: "no-store",
     credentials: "include",
   });
-  return parseJson<ProjectSecretMetadata[]>(response);
+  return parseJson<OrgProvider[]>(response);
 }
 
-export async function upsertAccountSecret(
-  key: string,
-  value: string,
-): Promise<ProjectSecretMetadata> {
-  const response = await fetch(apiUrl("/settings/secrets"), {
+export async function createOrgProvider(
+  organizationId: string,
+  input: { name: string; providerType: ProviderType; baseUrl?: string; apiKey: string },
+): Promise<OrgProvider> {
+  const response = await fetch(apiUrl(`/organizations/${organizationId}/providers`), {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return parseJson<OrgProvider>(response);
+}
+
+export async function updateOrgProvider(
+  organizationId: string,
+  providerId: string,
+  input: { name?: string; baseUrl?: string; apiKey?: string },
+): Promise<OrgProvider> {
+  const response = await fetch(apiUrl(`/organizations/${organizationId}/providers/${providerId}`), {
     method: "PUT",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ key, value }),
+    body: JSON.stringify(input),
   });
-  return parseJson<ProjectSecretMetadata>(response);
+  return parseJson<OrgProvider>(response);
 }
 
-export async function deleteAccountSecret(secretId: string): Promise<void> {
-  const response = await fetch(apiUrl(`/settings/secrets/${secretId}`), {
+export async function deleteOrgProvider(organizationId: string, providerId: string): Promise<void> {
+  const response = await fetch(apiUrl(`/organizations/${organizationId}/providers/${providerId}`), {
     method: "DELETE",
     credentials: "include",
   });
   if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(body?.error ?? `API error: ${response.status} ${response.statusText}`);
+  }
+}
+
+export interface ProviderConnectionTestResult {
+  ok: boolean;
+  error?: string;
+}
+
+export async function testOrgProviderConnection(
+  organizationId: string,
+  input: { providerType: ProviderType; baseUrl?: string; apiKey: string },
+): Promise<ProviderConnectionTestResult> {
+  const response = await fetch(apiUrl(`/organizations/${organizationId}/providers/test-connection`), {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return parseJson<ProviderConnectionTestResult>(response);
+}
+
+export async function testOrgProvider(
+  organizationId: string,
+  providerId: string,
+): Promise<ProviderConnectionTestResult> {
+  const response = await fetch(
+    apiUrl(`/organizations/${organizationId}/providers/${providerId}/test-connection`),
+    { method: "POST", credentials: "include" },
+  );
+  return parseJson<ProviderConnectionTestResult>(response);
+}
+
+export async function fetchOrgModels(organizationId: string): Promise<OrgModel[]> {
+  const response = await fetch(apiUrl(`/organizations/${organizationId}/models`), {
+    cache: "no-store",
+    credentials: "include",
+  });
+  return parseJson<OrgModel[]>(response);
+}
+
+export async function createOrgModel(
+  organizationId: string,
+  input: { providerId: string; displayName: string; modelId: string },
+): Promise<OrgModel> {
+  const response = await fetch(apiUrl(`/organizations/${organizationId}/models`), {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return parseJson<OrgModel>(response);
+}
+
+export async function deleteOrgModel(organizationId: string, modelId: string): Promise<void> {
+  const response = await fetch(apiUrl(`/organizations/${organizationId}/models/${modelId}`), {
+    method: "DELETE",
+    credentials: "include",
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(body?.error ?? `API error: ${response.status} ${response.statusText}`);
+  }
+}
+
+export async function fetchOrgJobModelDefaults(organizationId: string): Promise<JobModelDefault[]> {
+  const response = await fetch(apiUrl(`/organizations/${organizationId}/job-model-defaults`), {
+    cache: "no-store",
+    credentials: "include",
+  });
+  return parseJson<JobModelDefault[]>(response);
+}
+
+export async function setOrgJobModelDefault(
+  organizationId: string,
+  jobKind: AgentJobKind,
+  modelId: string,
+): Promise<JobModelDefault> {
+  const response = await fetch(
+    apiUrl(`/organizations/${organizationId}/job-model-defaults/${jobKind}`),
+    {
+      method: "PUT",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ modelId }),
+    },
+  );
+  return parseJson<JobModelDefault>(response);
+}
+
+export async function clearOrgJobModelDefault(
+  organizationId: string,
+  jobKind: AgentJobKind,
+): Promise<void> {
+  const response = await fetch(
+    apiUrl(`/organizations/${organizationId}/job-model-defaults/${jobKind}`),
+    { method: "DELETE", credentials: "include" },
+  );
+  if (!response.ok && response.status !== 404) {
+    const body = (await response.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(body?.error ?? `API error: ${response.status} ${response.statusText}`);
+  }
+}
+
+export async function fetchProjectJobModelOverrides(
+  projectId: string,
+): Promise<ProjectJobModelOverride[]> {
+  const response = await fetch(apiUrl(`/projects/${projectId}/job-model-overrides`), {
+    cache: "no-store",
+    credentials: "include",
+  });
+  return parseJson<ProjectJobModelOverride[]>(response);
+}
+
+export async function setProjectJobModelOverride(
+  projectId: string,
+  jobKind: AgentJobKind,
+  modelId: string,
+): Promise<ProjectJobModelOverride> {
+  const response = await fetch(apiUrl(`/projects/${projectId}/job-model-overrides/${jobKind}`), {
+    method: "PUT",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ modelId }),
+  });
+  return parseJson<ProjectJobModelOverride>(response);
+}
+
+export async function clearProjectJobModelOverride(
+  projectId: string,
+  jobKind: AgentJobKind,
+): Promise<void> {
+  const response = await fetch(apiUrl(`/projects/${projectId}/job-model-overrides/${jobKind}`), {
+    method: "DELETE",
+    credentials: "include",
+  });
+  if (!response.ok && response.status !== 404) {
     const body = (await response.json().catch(() => null)) as { error?: string } | null;
     throw new Error(body?.error ?? `API error: ${response.status} ${response.statusText}`);
   }
@@ -639,6 +798,19 @@ export async function setOrganizationCluster(
   });
   const data = await parseJson<{ cluster: OrgClusterMetadata }>(response);
   return data.cluster;
+}
+
+export async function testOrganizationCluster(
+  organizationId: string,
+  kubeconfig?: string,
+): Promise<ProviderConnectionTestResult> {
+  const response = await fetch(apiUrl(`/organizations/${organizationId}/cluster/test-connection`), {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(kubeconfig ? { kubeconfig } : {}),
+  });
+  return parseJson<ProviderConnectionTestResult>(response);
 }
 
 export async function clearOrganizationCluster(organizationId: string): Promise<void> {

@@ -18,19 +18,28 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { Select } from "@/components/ui/select";
 import {
   addProjectRepository,
+  clearProjectJobModelOverride,
   deleteProjectSecret,
+  fetchOrgModels,
   fetchProject,
+  fetchProjectJobModelOverrides,
   fetchProjectSecrets,
   removeProjectRepository,
+  setProjectJobModelOverride,
   upsertProjectSecret,
 } from "@/lib/api";
 import { ModelSecretField } from "@/components/settings/model-secret-field";
 import { appRoute } from "@/lib/config";
+import { AGENT_JOB_KINDS, AGENT_JOB_KIND_LABELS } from "@/lib/features/types";
 import type {
+  AgentJobKind,
   ModelSecretKey,
+  OrgModel,
   Project,
+  ProjectJobModelOverride,
   ProjectRepository,
   ProjectSecretMetadata,
 } from "@/lib/features/types";
@@ -92,6 +101,10 @@ export function ProjectSettingsClient({ projectId }: ProjectSettingsClientProps)
   // toggled locally by "Switch to custom" before any field has been saved.
   const [modelConfigMode, setModelConfigMode] = useState<"inherited" | "custom">("inherited");
   const [reverting, setReverting] = useState(false);
+  const [orgModels, setOrgModels] = useState<OrgModel[]>([]);
+  const [jobOverrides, setJobOverrides] = useState<ProjectJobModelOverride[]>([]);
+  const [overrideError, setOverrideError] = useState<string | null>(null);
+  const [savingOverride, setSavingOverride] = useState<AgentJobKind | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -106,6 +119,14 @@ export function ProjectSettingsClient({ projectId }: ProjectSettingsClientProps)
           setProject(projectData);
           setSecrets(secretsData);
           setModelConfigMode(secretsData.length > 0 ? "custom" : "inherited");
+        }
+        const [models, overrides] = await Promise.all([
+          fetchOrgModels(projectData.organizationId),
+          fetchProjectJobModelOverrides(projectId),
+        ]);
+        if (active) {
+          setOrgModels(models);
+          setJobOverrides(overrides);
         }
       } catch (loadError) {
         if (active) {
@@ -145,6 +166,24 @@ export function ProjectSettingsClient({ projectId }: ProjectSettingsClientProps)
       );
     } finally {
       setReverting(false);
+    }
+  }
+
+  async function handleSelectOverride(jobKind: AgentJobKind, modelId: string) {
+    setSavingOverride(jobKind);
+    setOverrideError(null);
+    try {
+      if (!modelId) {
+        await clearProjectJobModelOverride(projectId, jobKind);
+        setJobOverrides((current) => current.filter((o) => o.jobKind !== jobKind));
+        return;
+      }
+      const updated = await setProjectJobModelOverride(projectId, jobKind, modelId);
+      setJobOverrides((current) => [...current.filter((o) => o.jobKind !== jobKind), updated]);
+    } catch (saveError) {
+      setOverrideError(saveError instanceof Error ? saveError.message : "Failed to set override");
+    } finally {
+      setSavingOverride(null);
     }
   }
 
@@ -438,12 +477,15 @@ export function ProjectSettingsClient({ projectId }: ProjectSettingsClientProps)
               {modelConfigMode === "inherited" ? (
                 <div className="space-y-3 rounded-md border border-dashed border-rime p-3">
                   <p className="text-sm text-mist">
-                    Using your <span className="text-frost">account default</span> model
-                    configuration.
+                    Using your <span className="text-frost">organization&apos;s</span> model
+                    configuration (per job kind — see below), unless overridden here with a fully
+                    custom connection.
                   </p>
                   <div className="flex flex-wrap gap-2">
                     <Button variant="outline" size="sm" asChild>
-                      <Link href={appRoute("/settings")}>View account default</Link>
+                      <Link href={appRoute("/settings/organization/providers")}>
+                        View organization defaults
+                      </Link>
                     </Button>
                     <Button
                       type="button"
@@ -467,7 +509,7 @@ export function ProjectSettingsClient({ projectId }: ProjectSettingsClientProps)
                         disabled={reverting}
                         onClick={() => void handleRevertToDefault()}
                       >
-                        {reverting ? "Reverting…" : "Revert to account default"}
+                        {reverting ? "Reverting…" : "Revert to organization default"}
                       </Button>
                     ) : (
                       <Button
@@ -499,6 +541,49 @@ export function ProjectSettingsClient({ projectId }: ProjectSettingsClientProps)
               {actionError ? <p className="text-sm text-destructive">{actionError}</p> : null}
             </div>
           </Card>
+
+          {modelConfigMode === "inherited" ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Per-job-kind overrides</CardTitle>
+                <CardDescription>
+                  Pick a different model from your organization&apos;s catalog for a specific job
+                  kind, without setting up a fully custom connection.
+                </CardDescription>
+              </CardHeader>
+              <div className="space-y-3 px-4 pb-4">
+                {AGENT_JOB_KINDS.map((jobKind) => {
+                  const current = jobOverrides.find((o) => o.jobKind === jobKind);
+                  return (
+                    <div key={jobKind} className="rounded-md border border-rime p-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-sm font-medium text-frost">
+                          {AGENT_JOB_KIND_LABELS[jobKind]}
+                        </span>
+                        <span className="font-mono text-xs text-shadow">{jobKind}</span>
+                      </div>
+                      <Select
+                        className="mt-3"
+                        value={current?.modelId ?? ""}
+                        disabled={savingOverride === jobKind}
+                        onChange={(e) => void handleSelectOverride(jobKind, e.target.value)}
+                      >
+                        <option value="">Inherit organization default</option>
+                        {orgModels.map((model) => (
+                          <option key={model.id} value={model.id}>
+                            {model.displayName} — {model.providerName}
+                          </option>
+                        ))}
+                      </Select>
+                    </div>
+                  );
+                })}
+                {overrideError ? (
+                  <p className="text-sm text-destructive">{overrideError}</p>
+                ) : null}
+              </div>
+            </Card>
+          ) : null}
 
           <Card className="border-dashed">
             <CardHeader>

@@ -11,6 +11,7 @@ export interface ProjectRepository {
 
 export interface Project {
   id: string;
+  organizationId: string;
   name: string;
   slug: string;
   description: string;
@@ -217,6 +218,78 @@ export function hasFullModelConfigBundle(secrets: ProjectSecretMetadata[]): bool
   return keys.every((key) => secrets.some((secret) => secret.key === key));
 }
 
+// --- ADR 018: multi-provider model configuration ---
+
+export const AGENT_JOB_KINDS = [
+  "spec_grill",
+  "feature_build",
+  "test_run",
+  "agentic_review",
+  "design_grill",
+] as const;
+export type AgentJobKind = (typeof AGENT_JOB_KINDS)[number];
+
+export const AGENT_JOB_KIND_LABELS: Record<AgentJobKind, string> = {
+  spec_grill: "Spec grill",
+  feature_build: "Feature build",
+  test_run: "Tests",
+  agentic_review: "Agentic review",
+  design_grill: "Design grill",
+};
+
+export const PROVIDER_TYPES = ["openrouter", "anthropic", "custom_openai_compatible"] as const;
+export type ProviderType = (typeof PROVIDER_TYPES)[number];
+
+export const PROVIDER_TYPE_LABELS: Record<ProviderType, string> = {
+  openrouter: "OpenRouter",
+  anthropic: "Anthropic",
+  custom_openai_compatible: "Custom (OpenAI-compatible)",
+};
+
+/** Mirrors the API's DEFAULT_PROVIDER_BASE_URLS (ADR 018) — used to prefill the add-provider form. */
+export const DEFAULT_PROVIDER_BASE_URLS: Record<Exclude<ProviderType, "custom_openai_compatible">, string> = {
+  openrouter: "https://openrouter.ai/api/v1",
+  anthropic: "https://api.anthropic.com/v1",
+};
+
+export interface OrgProvider {
+  id: string;
+  organizationId: string;
+  name: string;
+  providerType: ProviderType;
+  baseUrl: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OrgModel {
+  id: string;
+  organizationId: string;
+  providerId: string;
+  providerName: string;
+  providerType: ProviderType;
+  displayName: string;
+  modelId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface JobModelDefault {
+  organizationId: string;
+  jobKind: AgentJobKind;
+  modelId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProjectJobModelOverride {
+  projectId: string;
+  jobKind: AgentJobKind;
+  modelId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Notification {
   id: string;
   projectId: string | null;
@@ -296,8 +369,6 @@ export const ORG_ROLE_LABELS: Record<OrgRole, string> = {
   product_manager: "Product Manager",
   tester: "Tester",
 };
-
-export type ModelSecretKeyLower = string; // placeholder no-op keep types tidy
 
 // --- Feature lifecycle gates (ADR 015 / Track B: Testing, Agentic Review) ---
 
