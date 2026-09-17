@@ -7,6 +7,9 @@ import type {
   DesignSession,
   Feature,
   FeatureEventsResponse,
+  FeatureJobModelOverride,
+  FeatureModelConfigResponse,
+  FeatureModelSecretMetadata,
   GithubAccessResponse,
   JobModelDefault,
   ModelConfigInput,
@@ -439,6 +442,115 @@ export async function clearProjectJobModelOverride(
     method: "DELETE",
     credentials: "include",
   });
+  if (!response.ok && response.status !== 404) {
+    const body = (await response.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(body?.error ?? `API error: ${response.status} ${response.statusText}`);
+  }
+}
+
+// --- ADR 018 amendment (issue #5): the per-feature override tier ---
+
+/**
+ * The read that makes "inherit" legible: for every agent job kind, which tier
+ * wins and — when it's a catalog tier — the model by name. Values are never
+ * part of the response.
+ */
+export async function fetchFeatureModelConfig(
+  projectId: string,
+  featureId: string,
+): Promise<FeatureModelConfigResponse> {
+  const response = await fetch(
+    apiUrl(`/projects/${projectId}/features/${featureId}/model-config`),
+    { cache: "no-store", credentials: "include" },
+  );
+  return parseJson<FeatureModelConfigResponse>(response);
+}
+
+export async function fetchFeatureJobModelOverrides(
+  projectId: string,
+  featureId: string,
+): Promise<FeatureJobModelOverride[]> {
+  const response = await fetch(
+    apiUrl(`/projects/${projectId}/features/${featureId}/job-model-overrides`),
+    { cache: "no-store", credentials: "include" },
+  );
+  return parseJson<FeatureJobModelOverride[]>(response);
+}
+
+export async function setFeatureJobModelOverride(
+  projectId: string,
+  featureId: string,
+  jobKind: AgentJobKind,
+  modelId: string,
+): Promise<FeatureJobModelOverride> {
+  const response = await fetch(
+    apiUrl(`/projects/${projectId}/features/${featureId}/job-model-overrides/${jobKind}`),
+    {
+      method: "PUT",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ modelId }),
+    },
+  );
+  return parseJson<FeatureJobModelOverride>(response);
+}
+
+export async function clearFeatureJobModelOverride(
+  projectId: string,
+  featureId: string,
+  jobKind: AgentJobKind,
+): Promise<void> {
+  const response = await fetch(
+    apiUrl(`/projects/${projectId}/features/${featureId}/job-model-overrides/${jobKind}`),
+    { method: "DELETE", credentials: "include" },
+  );
+  if (!response.ok && response.status !== 404) {
+    const body = (await response.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(body?.error ?? `API error: ${response.status} ${response.statusText}`);
+  }
+}
+
+export async function fetchFeatureModelSecrets(
+  projectId: string,
+  featureId: string,
+): Promise<FeatureModelSecretMetadata[]> {
+  const response = await fetch(
+    apiUrl(`/projects/${projectId}/features/${featureId}/model-secrets`),
+    { cache: "no-store", credentials: "include" },
+  );
+  return parseJson<FeatureModelSecretMetadata[]>(response);
+}
+
+/**
+ * Writes the feature's custom triplet as one all-or-nothing bundle — the API
+ * rejects a partial triplet, so the UI can never leave a half-configured
+ * override behind.
+ */
+export async function saveFeatureModelSecrets(
+  projectId: string,
+  featureId: string,
+  bundle: { modelBaseUrl: string; modelApiKey: string; modelId: string },
+): Promise<FeatureModelSecretMetadata[]> {
+  const response = await fetch(
+    apiUrl(`/projects/${projectId}/features/${featureId}/model-secrets`),
+    {
+      method: "PUT",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(bundle),
+    },
+  );
+  return parseJson<FeatureModelSecretMetadata[]>(response);
+}
+
+export async function clearFeatureModelSecrets(
+  projectId: string,
+  featureId: string,
+): Promise<void> {
+  const response = await fetch(
+    apiUrl(`/projects/${projectId}/features/${featureId}/model-secrets`),
+    { method: "DELETE", credentials: "include" },
+  );
   if (!response.ok && response.status !== 404) {
     const body = (await response.json().catch(() => null)) as { error?: string } | null;
     throw new Error(body?.error ?? `API error: ${response.status} ${response.statusText}`);

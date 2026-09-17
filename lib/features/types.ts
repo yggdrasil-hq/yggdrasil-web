@@ -290,6 +290,50 @@ export interface ProjectJobModelOverride {
   updatedAt: string;
 }
 
+// --- ADR 018 amendment (issue #5): the per-feature override tier ---
+
+/** Mirrors the API's ModelConfigSource: which tier a job kind's config resolves from, narrowest first. */
+export const MODEL_CONFIG_SOURCES = [
+  "feature_custom",
+  "feature_override",
+  "project_custom",
+  "project_override",
+  "organization_default",
+  "none",
+] as const;
+export type ModelConfigSource = (typeof MODEL_CONFIG_SOURCES)[number];
+
+export interface FeatureJobModelOverride {
+  featureId: string;
+  jobKind: AgentJobKind;
+  modelId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** The feature tier's custom-triplet metadata — the key that's set, never its value. */
+export interface FeatureModelSecretMetadata {
+  id: string;
+  key: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** One job kind's effective configuration: where it comes from, and — for a catalog tier — the model by name. */
+export interface FeatureModelConfigEntry {
+  jobKind: AgentJobKind;
+  source: ModelConfigSource;
+  modelId: string | null;
+  modelDisplayName: string | null;
+  providerName: string | null;
+}
+
+export interface FeatureModelConfigResponse {
+  /** True only when all three MODEL_* keys are set at the feature tier. */
+  customTripletSet: boolean;
+  jobKinds: FeatureModelConfigEntry[];
+}
+
 export interface Notification {
   id: string;
   projectId: string | null;

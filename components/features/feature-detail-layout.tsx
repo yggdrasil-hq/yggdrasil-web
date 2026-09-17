@@ -138,6 +138,15 @@ export function FeatureDetailLayout({ projectId, featureId, children }: FeatureD
                 {feature.title}
               </h1>
               <StatusBadge status={feature.status} />
+              {/* ADR 018 amendment (issue #5): this feature's model-config tier.
+                  A link rather than a stage tab — the six-stage nav's order
+                  drives lifecycle progress math, and this is a settings
+                  surface, not a stage. */}
+              <Button variant="ghost" size="sm" asChild>
+                <Link href={appRoute(`/projects/${projectId}/features/${featureId}/model-config`)}>
+                  Model configuration
+                </Link>
+              </Button>
             </div>
 
             {feature.status !== "cancelled" && feature.status !== "merged" ? (
