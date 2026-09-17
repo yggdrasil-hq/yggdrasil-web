@@ -21,7 +21,9 @@ import {
   getMockDeployStatus,
   getMockFeature,
   getMockFeatureEvents,
+  getMockDesign,
   getMockDesignEvents,
+  getMockDesigns,
   getMockFeatures,
   getMockOrgInvites,
   getMockOrgMembers,
@@ -477,6 +479,17 @@ export const handlers = [
     });
     if (!session) return HttpResponse.json({ error: "Design sessions are not enabled for this project" }, { status: 409 });
     return HttpResponse.json(session, { status: 201 });
+  }),
+
+  // ADR 020 browse/history. Listed before the `:designId` handler on purpose.
+  http.get(apiUrl("/projects/:projectId/designs"), ({ params }) => {
+    return HttpResponse.json(getMockDesigns(String(params.projectId)));
+  }),
+
+  http.get(apiUrl("/projects/:projectId/designs/:designId"), ({ params }) => {
+    const result = getMockDesign(String(params.projectId), String(params.designId));
+    if (!result) return HttpResponse.json({ error: "Design not found" }, { status: 404 });
+    return HttpResponse.json(result);
   }),
 
   http.get(apiUrl("/projects/:projectId/designs/:sessionId/events"), ({ params }) => {

@@ -180,7 +180,7 @@ export function AppSidebar({
 
         {project.status === "ready" && project.hasDesignSurface && (
           <Link
-            href={appRoute(`/projects/${project.id}/designs/new`)}
+            href={appRoute(`/projects/${project.id}/designs`)}
             onClick={onNavigate}
             className={cn(
               "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",

@@ -3,8 +3,11 @@ import type {
   AgentJobKind,
   AuditEventsResponse,
   DeployStatus,
+  Design,
+  DesignDetailResponse,
   DesignEventsResponse,
   DesignSession,
+  DesignsResponse,
   Feature,
   FeatureEventsResponse,
   FeatureJobModelOverride,
@@ -719,6 +722,27 @@ export async function cancelDesignSession(
     { method: "POST", credentials: "include" },
   );
   await parseJson<unknown>(response);
+}
+
+/** A project's saved designs, most recently touched first (ADR 020 item 6). */
+export async function fetchDesigns(projectId: string): Promise<DesignsResponse> {
+  const response = await fetch(apiUrl(`/projects/${projectId}/designs`), {
+    cache: "no-store",
+    credentials: "include",
+  });
+  return parseJson<DesignsResponse>(response);
+}
+
+/** One design plus every session that has worked on it. */
+export async function fetchDesign(
+  projectId: string,
+  designId: string,
+): Promise<DesignDetailResponse> {
+  const response = await fetch(apiUrl(`/projects/${projectId}/designs/${designId}`), {
+    cache: "no-store",
+    credentials: "include",
+  });
+  return parseJson<DesignDetailResponse>(response);
 }
 
 /** Re-dispatches spec_grill for a project_init feature stuck without a resolvable model config (ADR 007). */

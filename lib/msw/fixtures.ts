@@ -3,8 +3,11 @@ import type {
   ActionQueueItem,
   AgenticReview,
   DeployStatus,
+  Design,
+  DesignDetailResponse,
   DesignEventsResponse,
   DesignSession,
+  DesignsResponse,
   Feature,
   FeatureEvent,
   FeatureEventsResponse,
@@ -307,6 +310,85 @@ export const mockLastErrors: Record<string, string> = {};
 export const mockDesignSessions: Record<string, DesignSession> = {};
 export const mockDesignEvents: Record<string, FeatureEvent[]> = {};
 
+/**
+ * The ADR 020 design index, per project. Mirrors the real shape: the artifact
+ * stays in the repo, so these rows carry only identity plus the PR link.
+ */
+export const mockDesigns: Design[] = [];
+
+function findMockDesign(projectId: string, slug: string): Design | undefined {
+  return mockDesigns.find(
+    (design) => design.projectId === projectId && design.slug === slug,
+  );
+}
+
+/**
+ * Upserts on (project, slug) exactly like the API, so re-opening a design in
+ * mock mode continues the same row instead of creating a duplicate.
+ */
+export function upsertMockDesign(input: {
+  projectId: string;
+  name: string;
+  slug: string;
+  jobId: string;
+}): Design {
+  const existing = findMockDesign(input.projectId, input.slug);
+  if (existing) {
+    existing.updatedAt = new Date().toISOString();
+    existing.latestSession = {
+      id: input.jobId,
+      status: "running",
+      createdAt: new Date().toISOString(),
+      completedAt: null,
+      lastError: null,
+    };
+    return existing;
+  }
+  const design: Design = {
+    id: `design_row_${mockDesigns.length + 1}`,
+    projectId: input.projectId,
+    name: input.name,
+    slug: input.slug,
+    status: "in_progress",
+    originJobId: input.jobId,
+    prUrl: null,
+    finalizedAt: null,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    latestSession: {
+      id: input.jobId,
+      status: "running",
+      createdAt: new Date().toISOString(),
+      completedAt: null,
+      lastError: null,
+    },
+  };
+  mockDesigns.push(design);
+  return design;
+}
+
+export function getMockDesigns(projectId: string): DesignsResponse {
+  return {
+    designs: mockDesigns
+      .filter((design) => design.projectId === projectId)
+      .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt)),
+  };
+}
+
+export function getMockDesign(
+  projectId: string,
+  designId: string,
+): DesignDetailResponse | null {
+  const design = mockDesigns.find(
+    (candidate) => candidate.projectId === projectId && candidate.id === designId,
+  );
+  if (!design) return null;
+  return {
+    design,
+    sessions: design.latestSession ? [design.latestSession] : [],
+  };
+}
+
 export function createMockDesignSession(
   projectId: string,
   input: { name: string; description: string; slug?: string },
@@ -323,6 +405,9 @@ export function createMockDesignSession(
     createdAt: new Date().toISOString(),
   };
   mockDesignSessions[id] = session;
+  // Index it, so the browse view shows a session started in mock mode.
+  upsertMockDesign({ projectId, name: input.name, slug, jobId: id });
+  session.designId = findMockDesign(projectId, slug)?.id ?? null;
   mockDesignEvents[id] = [{
     id: `design_event_${Date.now()}`,
     type: "ask_user",

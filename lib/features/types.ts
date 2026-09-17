@@ -160,6 +160,49 @@ export interface DesignSession {
   description: string;
   status: JobStatus;
   createdAt: string;
+  /** The `designs` index row this session belongs to (ADR 020); null if the index write failed. */
+  designId?: string | null;
+}
+
+/**
+ * A persisted design (ADR 020). The artifact itself lives in the repo under
+ * `designs/<slug>/` — this is the index row pointing at it, not a copy.
+ */
+export interface Design {
+  id: string;
+  projectId: string;
+  name: string;
+  slug: string;
+  status: DesignStatus;
+  originJobId: string | null;
+  prUrl: string | null;
+  finalizedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  latestSession: DesignSessionSummary | null;
+}
+
+/**
+ * Two states only (ADR 020 item 3). Run outcome for the newest session is
+ * `latestSession.status`, read through from the job rather than mirrored here.
+ */
+export type DesignStatus = "in_progress" | "finalized";
+
+export interface DesignSessionSummary {
+  id: string;
+  status: JobStatus;
+  createdAt: string;
+  completedAt: string | null;
+  lastError: string | null;
+}
+
+export interface DesignsResponse {
+  designs: Design[];
+}
+
+export interface DesignDetailResponse {
+  design: Design;
+  sessions: DesignSessionSummary[];
 }
 
 export interface DesignEventsResponse {
