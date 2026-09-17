@@ -1,50 +1,44 @@
 "use client";
 
 import Link from "next/link";
+import { Info } from "lucide-react";
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/app-shell/app-shell";
-import { Card } from "@/components/ui/card";
-import { fetchProject } from "@/lib/api";
-import type { Project } from "@/lib/features/types";
-import { appRoute } from "@/lib/config";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
+  ActivityCard,
+  BreakdownCard,
+  BreakdownRow,
+  RecentSessionsCard,
+  StatCard,
+} from "@/components/usage/usage-blocks";
+import { fetchProject, fetchProjectAnalytics, USAGE_DEFAULT_DAYS } from "@/lib/api";
+import type { Project, ProjectAnalyticsReport } from "@/lib/features/types";
+import {
+  deltaPercent,
+  formatTokens,
   jobKindMeta,
-  projectActivityHeatmap,
-  projectAnalyticsByUser,
-  type JobKind,
-} from "@/lib/mock/monitoring";
+  modelLabel,
+  sharePercent,
+  type UsageJobKind,
+} from "@/lib/features/usage";
+import { appRoute } from "@/lib/config";
 import { cn } from "@/lib/utils";
 
 interface ProjectAnalyticsClientProps {
   projectId: string;
 }
 
-const heatLevelClass = [
-  "bg-surface-02",
-  "bg-bifrost/25",
-  "bg-bifrost/45",
-  "bg-bifrost/70",
-  "bg-bifrost",
-] as const;
-
-const sessionTypeBreakdown: { kind: JobKind; label: string; tokens: string; pct: number }[] = [
-  { kind: "feature_build", label: "Feature build", tokens: "1.3M", pct: 100 },
-  { kind: "spec_grill", label: "Feature spec", tokens: "570K", pct: 44 },
-  { kind: "test_run", label: "Tests", tokens: "230K", pct: 18 },
-];
-
-interface Session {
-  kind: JobKind;
-  title: string;
-  href?: string;
-  meta: string;
-  tokens: string;
-  status: string;
-  statusClass: string;
-}
-
+/**
+ * This project's agent activity (ADR 023).
+ *
+ * Shows no "By project" breakdown (redundant at this scope) and no "By user"
+ * breakdown — job rows carry no acting-user attribution, so a per-user split
+ * would have to be guessed. "By model" is measured instead.
+ */
 export function ProjectAnalyticsClient({ projectId }: ProjectAnalyticsClientProps) {
   const [project, setProject] = useState<Project | null>(null);
+  const [report, setReport] = useState<ProjectAnalyticsReport | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -52,11 +46,20 @@ export function ProjectAnalyticsClient({ projectId }: ProjectAnalyticsClientProp
 
     async function load() {
       try {
-        const projectData = await fetchProject(projectId);
-        if (active) setProject(projectData);
+        const [projectData, analyticsData] = await Promise.all([
+          fetchProject(projectId),
+          fetchProjectAnalytics(projectId, USAGE_DEFAULT_DAYS),
+        ]);
+        if (active) {
+          setProject(projectData);
+          setReport(analyticsData);
+          setError(null);
+        }
       } catch (loadError) {
         if (active) {
-          setError(loadError instanceof Error ? loadError.message : "Failed to load project");
+          setError(
+            loadError instanceof Error ? loadError.message : "Failed to load analytics",
+          );
         }
       }
     }
@@ -75,173 +78,103 @@ export function ProjectAnalyticsClient({ projectId }: ProjectAnalyticsClientProp
     return <div className="flex min-h-screen items-center justify-center text-mist">Loading analytics…</div>;
   }
 
-  const recentSessions: Session[] = [
-    {
-      kind: "feature_build",
-      title: "Usage metrics dashboard",
-      href: appRoute(`/projects/${project.id}/features/feat_004`),
-      meta: "Sarat Chandra",
-      tokens: "94.2K",
-      status: "Running",
-      statusClass: "text-aurora",
-    },
-    {
-      kind: "test_run",
-      title: "Auth flow",
-      href: appRoute(`/projects/${project.id}/tests/test_001`),
-      meta: "Scheduled",
-      tokens: "18.6K",
-      status: "Failed",
-      statusClass: "text-status-rejected",
-    },
-    {
-      kind: "spec_grill",
-      title: "Project settings page",
-      href: appRoute(`/projects/${project.id}/features/feat_002`),
-      meta: "Jordan Ellis",
-      tokens: "31.4K",
-      status: "Completed",
-      statusClass: "text-status-approved",
-    },
-    {
-      kind: "test_run",
-      title: "Checkout regression suite",
-      meta: "Scheduled",
-      tokens: "15.1K",
-      status: "Completed",
-      statusClass: "text-status-approved",
-    },
-  ];
+  const totals = report?.totals;
+  const sessionDelta = totals
+    ? deltaPercent(totals.sessions, totals.previousSessions)
+    : null;
+  const avgTokens =
+    totals && totals.sessions > 0 ? Math.round(totals.tokens / totals.sessions) : 0;
 
   return (
     <AppShell project={project}>
       <header className="border-b border-rime-soft px-4 py-4 sm:px-6 sm:py-5 lg:px-8">
         <p className="text-xs font-medium uppercase tracking-[0.14em] text-shadow">Project</p>
         <h1 className="text-xl font-semibold tracking-tight text-frost sm:text-2xl">Analytics</h1>
-        <p className="mt-1 text-sm text-mist">Agent activity and token consumption for {project.name}.</p>
+        <p className="mt-1 text-sm text-mist">
+          Agent activity and token consumption for {project.name}.
+        </p>
       </header>
 
       <main className="flex-1 px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
         <div className="mx-auto max-w-content">
+          {error && (
+            <Alert variant="destructive" className="mb-6">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+
           <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <Card className="p-4">
-              <div className="text-sm text-mist">Sessions (30d)</div>
-              <div className="mt-1.5 font-mono text-[28px] font-semibold text-frost">58</div>
-              <div className="mt-1 text-xs text-shadow">+9% vs. previous 30 days</div>
-            </Card>
-            <Card className="p-4">
-              <div className="text-sm text-mist">Tokens consumed (30d)</div>
-              <div className="mt-1.5 font-mono text-[28px] font-semibold text-frost">2.1M</div>
-              <div className="mt-1 text-xs text-shadow">31% of the organization&apos;s total</div>
-            </Card>
-            <Card className="p-4">
-              <div className="text-sm text-mist">Avg tokens / session</div>
-              <div className="mt-1.5 font-mono text-[28px] font-semibold text-frost">36.2K</div>
-              <div className="mt-1 text-xs text-shadow">feature_build runs highest, ~88K avg</div>
-            </Card>
+            <StatCard
+              label={`Sessions (${USAGE_DEFAULT_DAYS}d)`}
+              value={totals ? String(totals.sessions) : "—"}
+              hint={
+                sessionDelta === null
+                  ? "No earlier window to compare against"
+                  : `${sessionDelta >= 0 ? "+" : ""}${sessionDelta}% vs. previous ${USAGE_DEFAULT_DAYS} days`
+              }
+            />
+            <StatCard
+              label={`Tokens consumed (${USAGE_DEFAULT_DAYS}d)`}
+              value={totals ? formatTokens(totals.tokens) : "—"}
+              hint="Measured across this project's sessions"
+            />
+            <StatCard
+              label="Avg tokens / session"
+              value={totals && totals.sessions > 0 ? formatTokens(avgTokens) : "—"}
+              hint="Provider-reported, across sessions that reported usage"
+            />
           </div>
 
-          <Card className="mb-6 p-4 sm:p-5">
-            <div className="text-[15px] font-semibold text-frost">Activity</div>
-            <div className="mb-4 mt-1 text-xs text-shadow">Sessions run per day, last 52 weeks.</div>
-            <div className="overflow-x-auto pb-1">
-              <div
-                className="grid gap-[3px]"
-                style={{
-                  gridTemplateColumns: "repeat(52, 1fr)",
-                  gridTemplateRows: "repeat(7, 14px)",
-                  gridAutoFlow: "column",
-                  width: "100%",
-                  minWidth: "600px",
-                }}
-              >
-                {projectActivityHeatmap.map((level, i) => (
-                  <span key={i} className={cn("min-w-[2px] rounded-[2px]", heatLevelClass[level])} />
-                ))}
-              </div>
-            </div>
-            <div className="mt-2.5 flex items-center gap-1.5 text-[11px] text-shadow">
-              <span>Less</span>
-              {heatLevelClass.map((c, i) => (
-                <span key={i} className={cn("inline-block size-3 rounded-[2px]", c)} />
-              ))}
-              <span>More</span>
-            </div>
-          </Card>
+          <div className="mb-6 flex items-start gap-3 rounded-md border border-rime bg-surface-01 px-4 py-3.5">
+            <Info className="mt-0.5 size-4 shrink-0 text-shadow" />
+            <p className="text-sm leading-relaxed text-mist">
+              Consumption is metered against your organization&apos;s provider keys.{" "}
+              <Link href={appRoute("/analytics")} className="text-bifrost hover:underline">
+                View organization analytics &rarr;
+              </Link>
+            </p>
+          </div>
 
-          <Card className="mb-6 p-4 sm:p-5">
-            <div className="text-[15px] font-semibold text-frost">By session type</div>
-            <div className="mb-4 mt-1 text-xs text-shadow">Token consumption, last 30 days.</div>
-            {sessionTypeBreakdown.map((item) => (
-              <div key={item.kind} className="mt-2.5 flex items-center gap-3 first:mt-0">
-                <div className="flex w-[150px] shrink-0 items-center gap-2 overflow-hidden text-sm text-frost">
-                  <span className={cn("size-2 shrink-0 rounded-full", jobKindMeta[item.kind].dotClass)} />
-                  <span className="truncate">{item.label}</span>
-                </div>
-                <div className="h-2 flex-1 overflow-hidden rounded-full bg-surface-02">
-                  <div className="h-full rounded-full bg-bifrost" style={{ width: `${item.pct}%` }} />
-                </div>
-                <div className="w-[90px] shrink-0 text-right font-mono text-xs text-mist">{item.tokens}</div>
-              </div>
-            ))}
-          </Card>
+          <ActivityCard activity={report?.activity ?? []} />
 
-          <Card className="mb-6 p-4 sm:p-5">
-            <div className="text-[15px] font-semibold text-frost">By user</div>
-            <div className="mb-4 mt-1 text-xs text-shadow">Token consumption, last 30 days.</div>
-            {projectAnalyticsByUser.map((item) => (
-              <div key={item.initials} className="mt-2.5 flex items-center gap-3 first:mt-0">
-                <div className="flex w-[150px] shrink-0 items-center gap-2 overflow-hidden text-sm text-frost">
-                  <span className="flex size-[22px] shrink-0 items-center justify-center rounded-full bg-surface-03 text-[10px] font-medium text-frost">
-                    {item.initials}
-                  </span>
-                  <span className="truncate">{item.name}</span>
-                </div>
-                <div className="h-2 flex-1 overflow-hidden rounded-full bg-surface-02">
-                  <div className="h-full rounded-full bg-bifrost" style={{ width: `${item.pct}%` }} />
-                </div>
-                <div className="w-[90px] shrink-0 text-right font-mono text-xs text-mist">{item.tokens}</div>
-              </div>
-            ))}
-          </Card>
-
-          <Card className="p-4 sm:p-5">
-            <div className="text-[15px] font-semibold text-frost">Recent sessions</div>
-            <div className="mb-1 mt-1 text-xs text-shadow">
-              Every grill, build, and test run for this project, most recent first.
-            </div>
-            {recentSessions.map((session, i) => {
-              const meta = jobKindMeta[session.kind];
-              const title = session.href ? (
-                <Link href={session.href} className="hover:text-bifrost">
-                  {session.title}
-                </Link>
-              ) : (
-                session.title
-              );
+          <BreakdownCard
+            title="By session type"
+            description={`Token consumption, last ${USAGE_DEFAULT_DAYS} days.`}
+            emptyMessage="No sessions recorded for this project in this window."
+            rows={(report?.byKind ?? []).map((bucket) => {
+              const meta = jobKindMeta(bucket.jobKind as UsageJobKind);
               return (
-                <div key={i} className="mt-2.5 flex items-center gap-3 rounded-md border border-rime p-3 first:mt-0">
-                  <span
-                    className={cn(
-                      "inline-flex h-5 shrink-0 items-center whitespace-nowrap rounded-full px-2 text-[10px] font-medium",
-                      meta.bgClass,
-                      meta.colorClass,
-                    )}
-                  >
-                    {meta.label}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm text-frost">{title}</div>
-                    <div className="mt-0.5 truncate text-xs text-shadow">{session.meta}</div>
-                  </div>
-                  <div className="w-[76px] shrink-0 text-right font-mono text-sm text-mist">{session.tokens}</div>
-                  <div className={cn("w-[90px] shrink-0 text-xs", session.statusClass)}>
-                    &#9679; {session.status}
-                  </div>
-                </div>
+                <BreakdownRow
+                  key={bucket.jobKind}
+                  label={meta.label}
+                  detail={`${bucket.sessions} session${bucket.sessions === 1 ? "" : "s"}`}
+                  barPct={sharePercent(bucket.tokens, totals?.tokens ?? 0)}
+                  right={formatTokens(bucket.tokens)}
+                  leading={<span className={cn("size-2 shrink-0 rounded-full", meta.dotClass)} />}
+                />
               );
             })}
-          </Card>
+          />
+
+          <BreakdownCard
+            title="By model"
+            description={`Token consumption, last ${USAGE_DEFAULT_DAYS} days.`}
+            emptyMessage="No model usage recorded for this project in this window."
+            rows={(report?.byModel ?? []).map((bucket) => (
+              <BreakdownRow
+                key={`${bucket.modelId ?? "none"}-${bucket.providerName ?? "none"}`}
+                label={modelLabel(bucket.modelId, bucket.providerName)}
+                detail={`${bucket.sessions} session${bucket.sessions === 1 ? "" : "s"}`}
+                barPct={sharePercent(bucket.tokens, totals?.tokens ?? 0)}
+                right={formatTokens(bucket.tokens)}
+              />
+            ))}
+          />
+
+          <RecentSessionsCard
+            sessions={report?.recentSessions ?? []}
+            description="Every grill, build, and test run for this project, most recent first."
+          />
         </div>
       </main>
     </AppShell>

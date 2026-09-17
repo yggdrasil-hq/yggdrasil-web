@@ -568,3 +568,104 @@ export interface AgenticReview {
 export function emptyAgenticReview(featureId: string): AgenticReview {
   return { featureId, verdict: null, comment: null, findings: [] };
 }
+
+// --- Usage / analytics reporting (ADR 023) ---
+
+/** One aggregation bucket: a token total plus how many sessions produced it. */
+export interface UsageBucket {
+  tokens: number;
+  sessions: number;
+}
+
+export interface UsageByProvider extends UsageBucket {
+  providerName: string | null;
+  /** `null` when no session in the bucket had a provider-reported cost. */
+  costUsd: number | null;
+}
+
+export interface UsageByKind extends UsageBucket {
+  jobKind: string;
+}
+
+export interface UsageByProject extends UsageBucket {
+  projectId: string;
+  projectName: string;
+}
+
+export interface UsageByModel extends UsageBucket {
+  modelId: string | null;
+  providerName: string | null;
+}
+
+export interface UsageActivityDay {
+  date: string;
+  sessions: number;
+  tokens: number;
+}
+
+export interface UsageSession {
+  jobId: string;
+  projectId: string;
+  projectName: string;
+  jobKind: string;
+  /** Feature title / test name / design name — whichever this job kind has. */
+  title: string | null;
+  featureId: string | null;
+  testId: string | null;
+  status: string;
+  tokens: number;
+  costUsd: number | null;
+  durationMs: number | null;
+  createdAt: string;
+}
+
+export interface UsageTotals {
+  sessions: number;
+  tokens: number;
+  costUsd: number | null;
+  /** The same window immediately before this one, for period-over-period change. */
+  previousSessions: number;
+  previousTokens: number;
+}
+
+export interface OrganizationUsageReport {
+  days: number;
+  from: string;
+  to: string;
+  totals: UsageTotals;
+  byProvider: UsageByProvider[];
+  byKind: UsageByKind[];
+  byProject: UsageByProject[];
+}
+
+export interface OrganizationAnalyticsReport {
+  days: number;
+  from: string;
+  to: string;
+  totals: UsageTotals;
+  activity: UsageActivityDay[];
+  byKind: UsageByKind[];
+  byProject: UsageByProject[];
+  byModel: UsageByModel[];
+  recentSessions: UsageSession[];
+}
+
+export interface ProjectUsageReport {
+  days: number;
+  from: string;
+  to: string;
+  totals: UsageTotals;
+  byProvider: UsageByProvider[];
+  byKind: UsageByKind[];
+}
+
+export interface ProjectAnalyticsReport {
+  days: number;
+  from: string;
+  to: string;
+  totals: UsageTotals;
+  activity: UsageActivityDay[];
+  byKind: UsageByKind[];
+  byModel: UsageByModel[];
+  recentSessions: UsageSession[];
+}

@@ -1,62 +1,140 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { HubLayout } from "@/components/app-shell/hub-layout";
-import { Card } from "@/components/ui/card";
-import { orgProviderUsage } from "@/lib/mock/monitoring";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  BreakdownCard,
+  BreakdownRow,
+  MeteringNotice,
+  StatCard,
+} from "@/components/usage/usage-blocks";
+import { useActiveOrganization } from "@/components/usage/use-active-organization";
+import { fetchOrganizationUsage, USAGE_DEFAULT_DAYS } from "@/lib/api";
+import type { OrganizationUsageReport } from "@/lib/features/types";
+import {
+  deltaPercent,
+  formatCost,
+  formatTokens,
+  providerLabel,
+  sharePercent,
+} from "@/lib/features/usage";
 import { cn } from "@/lib/utils";
 
+/**
+ * Organization-level token consumption (ADR 023).
+ *
+ * This page previously showed static placeholder data (ADR 017), including a
+ * "% of limit" bar and a billing-cycle reset date. Those are deliberately gone
+ * rather than wired to something plausible: Yggdrasil does not own the
+ * provider account, so neither figure exists to be fetched — see
+ * MeteringNotice. What replaced them is measured consumption per provider.
+ */
 export function UsagePageClient() {
+  const { orgId } = useActiveOrganization();
+  const [report, setReport] = useState<OrganizationUsageReport | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!orgId) return;
+    let active = true;
+    setLoaded(false);
+    fetchOrganizationUsage(orgId, USAGE_DEFAULT_DAYS)
+      .then((data) => {
+        if (active) {
+          setReport(data);
+          setError(null);
+        }
+      })
+      .catch((loadError) => {
+        if (active) {
+          setError(
+            loadError instanceof Error ? loadError.message : "Unable to load usage.",
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setLoaded(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, [orgId]);
+
+  const totals = report?.totals;
+  const tokenDelta = totals ? deltaPercent(totals.tokens, totals.previousTokens) : null;
+
   return (
-    <HubLayout title="Usage" description="Token usage across every provider connected to your organization.">
+    <HubLayout
+      title="Usage"
+      description="Token consumption across every provider connected to your organization."
+      activeOrgId={orgId}
+    >
+      {error && (
+        <Alert variant="destructive" className="mb-6">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
       <div className="mb-7 grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <Card className="p-4">
-          <div className="text-sm text-mist">Total tokens this cycle</div>
-          <div className="mt-1.5 font-mono text-[28px] font-semibold text-frost">6.8M</div>
-          <div className="mt-1 text-xs text-shadow">Across 4 connected providers</div>
-        </Card>
-        <Card className="p-4">
-          <div className="text-sm text-mist">Highest usage</div>
-          <div className="mt-1.5 font-mono text-[28px] font-semibold text-frost">OpenRouter</div>
-          <div className="mt-1 text-xs text-shadow">3.9M tokens &middot; 39% of limit</div>
-        </Card>
-        <Card className="p-4">
-          <div className="text-sm text-mist">Next reset</div>
-          <div className="mt-1.5 font-mono text-[28px] font-semibold text-frost">18 days</div>
-          <div className="mt-1 text-xs text-shadow">Anthropic &middot; Dec 1</div>
-        </Card>
+        <StatCard
+          label={`Tokens consumed (${USAGE_DEFAULT_DAYS}d)`}
+          value={totals ? formatTokens(totals.tokens) : "—"}
+          hint={
+            tokenDelta === null
+              ? "No earlier window to compare against"
+              : `${tokenDelta >= 0 ? "+" : ""}${tokenDelta}% vs. previous ${USAGE_DEFAULT_DAYS} days`
+          }
+        />
+        <StatCard
+          label={`Sessions (${USAGE_DEFAULT_DAYS}d)`}
+          value={totals ? String(totals.sessions) : "—"}
+          hint="Agent runs that reported usage"
+        />
+        <StatCard
+          label="Provider-reported cost"
+          value={totals ? formatCost(totals.costUsd) : "—"}
+          hint="Sum of what the providers reported"
+        />
       </div>
 
-      <Card className="p-4 sm:p-5">
-        {orgProviderUsage.map((provider, i) => (
-          <div
-            key={provider.provider}
-            className={cn("mt-5 first:mt-0", i > 0 && "border-t border-rime-soft pt-5")}
-          >
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <div className="text-[15px] font-medium text-frost">{provider.provider}</div>
-                <div className="mt-0.5 text-xs text-shadow">As reported by the provider</div>
-              </div>
-              <div className="text-right font-mono text-sm text-mist">
-                <span className={cn("font-medium", provider.warn ? "text-status-input" : "text-frost")}>
-                  {provider.pct}%
-                </span>{" "}
-                &middot; {provider.usedTokens} / {provider.limitTokens} tokens
-              </div>
-            </div>
-            <div className="mt-3.5 h-2 overflow-hidden rounded-full bg-surface-02">
-              <div
-                className={cn("h-full rounded-full", provider.warn ? "bg-status-input" : "bg-bifrost")}
-                style={{ width: `${provider.pct}%` }}
-              />
-            </div>
-            <div className="mt-2.5 flex items-center justify-between text-xs text-shadow">
-              <span>Used across {provider.projectCount} project{provider.projectCount === 1 ? "" : "s"}</span>
-              <span>Resets in {provider.resetsInDays} days</span>
-            </div>
-          </div>
-        ))}
-      </Card>
+      {loaded && !error && totals?.sessions === 0 && (
+        <p className="mb-6 text-sm text-mist">
+          No agent runs reported usage in the last {USAGE_DEFAULT_DAYS} days. Figures
+          appear once a job&apos;s session ends and reports its token accounting.
+        </p>
+      )}
+
+      <BreakdownCard
+        title="By provider"
+        description={`Measured consumption, last ${USAGE_DEFAULT_DAYS} days.`}
+        emptyMessage="No provider usage recorded in this window."
+        rows={(report?.byProvider ?? []).map((provider) => {
+          const label = providerLabel(provider.providerName);
+          return (
+            <BreakdownRow
+              key={label}
+              label={label}
+              detail={`${provider.sessions} session${provider.sessions === 1 ? "" : "s"} · ${formatCost(provider.costUsd)}`}
+              barPct={sharePercent(provider.tokens, totals?.tokens ?? 0)}
+              right={formatTokens(provider.tokens)}
+              leading={
+                <span
+                  className={cn(
+                    "size-2 shrink-0 rounded-full",
+                    // A null provider is a bring-your-own custom endpoint, not
+                    // an error — it simply has no catalog entry to colour by.
+                    provider.providerName ? "bg-bifrost" : "bg-mist",
+                  )}
+                />
+              }
+            />
+          );
+        })}
+      />
+
+      <MeteringNotice />
     </HubLayout>
   );
 }

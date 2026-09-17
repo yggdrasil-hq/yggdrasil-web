@@ -5,7 +5,7 @@ import { ArrowRight } from "lucide-react";
 import { HubLayout } from "@/components/app-shell/hub-layout";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { jobKindMeta, type JobKind } from "@/lib/mock/monitoring";
+import { jobKindMeta, type UsageJobKind as JobKind } from "@/lib/features/usage";
 import { appRoute } from "@/lib/config";
 import { mockProject } from "@/lib/msw/fixtures";
 import { cn } from "@/lib/utils";
@@ -142,7 +142,7 @@ export function InfrastructurePageClient() {
           Every job pod currently running or pending across all projects.
         </div>
         {activeJobs.map((job, i) => {
-          const meta = jobKindMeta[job.kind];
+          const meta = jobKindMeta(job.kind);
           const title = job.href ? (
             <Link href={job.href} className="hover:text-bifrost">
               {job.title}
