@@ -362,6 +362,35 @@ export interface OrgClusterMetadata {
   updatedAt: string;
 }
 
+// --- Audit trail (ADR 028) ---
+
+export type AuditActorKind = "user" | "system" | "webhook" | "job";
+
+/** One recorded mutation. `metadata` is free-form per action — see the ADR's coverage table. */
+export interface AuditEvent {
+  id: string;
+  organizationId: string;
+  projectId: string | null;
+  projectName: string | null;
+  actorUserId: string | null;
+  actorUsername: string | null;
+  actorDisplayName: string | null;
+  actorKind: AuditActorKind;
+  action: string;
+  targetType: string | null;
+  targetId: string | null;
+  metadata: Record<string, unknown>;
+  ip: string | null;
+  createdAt: string;
+}
+
+export interface AuditEventsResponse {
+  events: AuditEvent[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export const ORG_ROLE_LABELS: Record<OrgRole, string> = {
   admin: "Admin",
   developer: "Developer",

@@ -1,6 +1,7 @@
 import { apiUrl } from "@/lib/config";
 import type {
   AgentJobKind,
+  AuditEventsResponse,
   DeployStatus,
   DesignEventsResponse,
   DesignSession,
@@ -918,6 +919,38 @@ export async function deleteOrganizationSecret(
     const body = (await response.json().catch(() => null)) as { error?: string } | null;
     throw new Error(body?.error ?? `API error: ${response.status}`);
   }
+}
+
+// --- Audit trail (ADR 028) ---
+
+/**
+ * One page of an organization's audit trail, newest first. Admin-only on the
+ * API side: a non-admin gets the API's 403 thrown as an Error.
+ */
+export async function fetchOrganizationAuditEvents(
+  organizationId: string,
+  filters: {
+    projectId?: string;
+    actorUserId?: string;
+    action?: string;
+    from?: string;
+    to?: string;
+    limit?: number;
+    offset?: number;
+  } = {},
+): Promise<AuditEventsResponse> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined && value !== "") {
+      params.set(key, String(value));
+    }
+  }
+  const query = params.toString();
+  const response = await fetch(
+    apiUrl(`/organizations/${organizationId}/audit${query ? `?${query}` : ""}`),
+    { cache: "no-store", credentials: "include" },
+  );
+  return parseJson<AuditEventsResponse>(response);
 }
 
 // --- Feature Action Items (ADR 015 / Track B) ---
