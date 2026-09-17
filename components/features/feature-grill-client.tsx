@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Markdown } from "@/components/markdown";
@@ -33,7 +33,14 @@ import {
   restartConfirmCopy,
   restartedNotice,
 } from "@/lib/features/grill-restart";
-import { appRoute } from "@/lib/config";
+import { apiBaseUrl, appRoute } from "@/lib/config";
+import {
+  createLiveRelay,
+  createRefreshCoalescer,
+  LIVE_SAFETY_POLL_INTERVAL_MS,
+  liveSocketUrl,
+  type LiveRelayStatus,
+} from "@/lib/features/live-relay";
 import type { FeatureEvent, JobStatus } from "@/lib/features/types";
 import type { FeatureStatus } from "@/lib/features/statuses";
 
@@ -47,11 +54,19 @@ import type { FeatureStatus } from "@/lib/features/statuses";
  * Two things changed and nothing else: the transcript no longer has a
  * max-height/overflow container, so it scrolls with the page; and the reply
  * composer is sticky to the viewport bottom so it stays reachable in a long
- * conversation. Every behaviour — the 2s poll of both the feature and its
- * job events, the reply/cancel/retry gating, the stopped banner, the
- * deliberate swallow of transient poll failures — is carried over verbatim
- * (see lib/features/grill.ts, where the predicates now live and are
- * unit-tested).
+ * conversation. Every behaviour — the poll of both the feature and its job
+ * events, the reply/cancel/retry gating, the stopped banner, the deliberate
+ * swallow of transient poll failures — is carried over verbatim (see
+ * lib/features/grill.ts, where the predicates now live and are unit-tested).
+ *
+ * ADR 019 adds the live relay on top without changing that shape. The REST read
+ * stays the *only* state path — the socket never sets page state itself, it
+ * only signals that a re-read is due — so this page cannot render a state the
+ * API would not return, and a socket that never connects is indistinguishable
+ * from the pre-relay page. While the relay is live the poll drops to a slow
+ * safety interval; otherwise it is the original 2s poll. The poll effect also
+ * re-runs on connect, which is the whole of the missed-event story: the re-read
+ * is the catch-up.
  *
  * The route is NOT a seventh lifecycle stage: lib/features/stage.ts's
  * FEATURE_STAGES drives the six-stage tab nav and its done/active/upcoming
@@ -77,41 +92,75 @@ export function FeatureGrillClient() {
   const [restartingAt, setRestartingAt] = useState<string | null>(null);
   const [polled, setPolled] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [liveStatus, setLiveStatus] = useState<LiveRelayStatus>("off");
+
+  // Flips on unmount so an in-flight poll (or a relay frame that lands just as
+  // the page is left) cannot setState after teardown.
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  const poll = useCallback(async () => {
+    try {
+      const [featureData, eventsData] = await Promise.all([
+        fetchFeature(projectId, featureId),
+        fetchFeatureEvents(projectId, featureId),
+      ]);
+      if (!mountedRef.current) return;
+      setFeature(featureData);
+      setEvents(eventsData.events);
+      setJobStatus(eventsData.jobStatus);
+      setLastError(eventsData.lastError);
+      setJobKind(eventsData.jobKind);
+      setRestartedFrom(eventsData.restartedFromEventId);
+      setPolled(true);
+    } catch {
+      // Transient poll failures are ignored: the next tick retries, and the
+      // last known state stays on screen instead of flashing an error.
+    }
+  }, [projectId, featureId, setFeature]);
+
+  const relayLive = liveStatus === "live";
 
   useEffect(() => {
-    let active = true;
-
-    async function poll() {
-      try {
-        const [featureData, eventsData] = await Promise.all([
-          fetchFeature(projectId, featureId),
-          fetchFeatureEvents(projectId, featureId),
-        ]);
-        if (!active) return;
-        setFeature(featureData);
-        setEvents(eventsData.events);
-        setJobStatus(eventsData.jobStatus);
-        setLastError(eventsData.lastError);
-        setJobKind(eventsData.jobKind);
-        setRestartedFrom(eventsData.restartedFromEventId);
-        setPolled(true);
-      } catch {
-        // Transient poll failures are ignored: the next tick retries, and
-        // the last known state stays on screen instead of flashing an error.
-      }
-    }
-
     void poll();
-    const interval = setInterval(() => void poll(), GRILL_POLL_INTERVAL_MS);
+    // Depends on `relayLive`, not on the status itself: connecting → live is the
+    // only transition that changes the interval, and keying on the boolean means
+    // the initial off → connecting transition does not trigger a second
+    // immediate read on mount.
+    const interval = setInterval(
+      () => void poll(),
+      relayLive ? LIVE_SAFETY_POLL_INTERVAL_MS : GRILL_POLL_INTERVAL_MS,
+    );
+    return () => clearInterval(interval);
+  }, [poll, relayLive]);
+
+  useEffect(() => {
+    const url = liveSocketUrl(apiBaseUrl(), window.location.origin);
+    // Unparsable API base: no socket, and the poll effect above is already the
+    // fallback rather than an error path.
+    if (!url) return;
+
+    // Coalesced because one agent turn can append several events at once, and a
+    // re-read per frame would be as many requests as polling, just burstier.
+    const refresh = createRefreshCoalescer({ run: () => void poll() });
+    const relay = createLiveRelay({
+      url,
+      projectId,
+      featureId,
+      onEvent: () => refresh.trigger(),
+      onStatusChange: setLiveStatus,
+    });
+
     return () => {
-      active = false;
-      clearInterval(interval);
+      refresh.cancel();
+      relay.stop();
     };
-    // setFeature intentionally excluded: it's the layout's stable
-    // useCallback setter, and including it would tear down/restart this
-    // interval on every parent render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, featureId]);
+  }, [projectId, featureId, poll]);
 
   async function handleSendReply() {
     const content = replyDraft.trim();
