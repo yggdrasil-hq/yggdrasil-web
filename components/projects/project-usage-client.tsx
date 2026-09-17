@@ -4,36 +4,61 @@ import Link from "next/link";
 import { Info } from "lucide-react";
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/app-shell/app-shell";
-import { Card } from "@/components/ui/card";
-import { fetchProject } from "@/lib/api";
-import type { Project } from "@/lib/features/types";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { BreakdownCard, BreakdownRow, StatCard } from "@/components/usage/usage-blocks";
+import { fetchProject, fetchProjectUsage, USAGE_DEFAULT_DAYS } from "@/lib/api";
+import type { Project, ProjectUsageReport } from "@/lib/features/types";
+import {
+  formatCost,
+  formatTokens,
+  jobKindMeta,
+  providerLabel,
+  sharePercent,
+  type UsageJobKind,
+} from "@/lib/features/usage";
 import { appRoute } from "@/lib/config";
+import { cn } from "@/lib/utils";
 
 interface ProjectUsageClientProps {
   projectId: string;
 }
 
-const providerUsage = [
-  { provider: "OpenRouter", tokens: "1.4M tokens", pct: 67 },
-  { provider: "Anthropic", tokens: "620K tokens", pct: 30 },
-  { provider: "OpenAI", tokens: "62K tokens", pct: 3 },
-];
-
+/**
+ * One project's slice of the organization's metered consumption (ADR 023).
+ *
+ * Framed as a slice rather than a quota, on purpose: providers are
+ * bring-your-own-key and organization-owned, and there is no per-project cap
+ * (that is issue #18, unbuilt). So there is no progress bar against a limit
+ * here — only measured tokens, plus how they compare to their neighbors.
+ */
 export function ProjectUsageClient({ projectId }: ProjectUsageClientProps) {
   const [project, setProject] = useState<Project | null>(null);
+  const [report, setReport] = useState<ProjectUsageReport | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     let active = true;
 
     async function load() {
       try {
-        const projectData = await fetchProject(projectId);
-        if (active) setProject(projectData);
+        const [projectData, usageData] = await Promise.all([
+          fetchProject(projectId),
+          fetchProjectUsage(projectId, USAGE_DEFAULT_DAYS),
+        ]);
+        if (active) {
+          setProject(projectData);
+          setReport(usageData);
+          setError(null);
+        }
       } catch (loadError) {
         if (active) {
-          setError(loadError instanceof Error ? loadError.message : "Failed to load project");
+          setError(
+            loadError instanceof Error ? loadError.message : "Failed to load usage",
+          );
         }
+      } finally {
+        if (active) setLoaded(true);
       }
     }
 
@@ -51,12 +76,18 @@ export function ProjectUsageClient({ projectId }: ProjectUsageClientProps) {
     return <div className="flex min-h-screen items-center justify-center text-mist">Loading usage…</div>;
   }
 
+  const totals = report?.totals;
+  const topProvider = report?.byProvider[0] ?? null;
+  const topKind = report?.byKind[0] ?? null;
+
   return (
     <AppShell project={project}>
       <header className="border-b border-rime-soft px-4 py-4 sm:px-6 sm:py-5 lg:px-8">
         <p className="text-xs font-medium uppercase tracking-[0.14em] text-shadow">Project</p>
         <h1 className="text-xl font-semibold tracking-tight text-frost sm:text-2xl">Usage</h1>
-        <p className="mt-1 text-sm text-mist">This project&apos;s token usage across your organization&apos;s connected providers.</p>
+        <p className="mt-1 text-sm text-mist">
+          This project&apos;s token usage across your organization&apos;s connected providers.
+        </p>
       </header>
 
       <main className="flex-1 px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
@@ -64,48 +95,93 @@ export function ProjectUsageClient({ projectId }: ProjectUsageClientProps) {
           <div className="mb-6 flex items-start gap-3 rounded-md border border-rime bg-surface-01 px-4 py-3.5">
             <Info className="mt-0.5 size-4 shrink-0 text-shadow" />
             <p className="text-sm leading-relaxed text-mist">
-              These numbers count toward your organization&apos;s shared provider quotas — this project doesn&apos;t
-              have its own limit.{" "}
+              These runs draw on your organization&apos;s own provider keys — this
+              project has no separate limit or quota of its own.{" "}
               <Link href={appRoute("/usage")} className="text-bifrost hover:underline">
-                View organization usage &amp; limits &rarr;
+                View organization usage &rarr;
               </Link>
             </p>
           </div>
 
+          {error && (
+            <Alert variant="destructive" className="mb-6">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+
           <div className="mb-7 grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <Card className="p-4">
-              <div className="text-sm text-mist">Tokens this cycle</div>
-              <div className="mt-1.5 font-mono text-[28px] font-semibold text-frost">2.1M</div>
-              <div className="mt-1 text-xs text-shadow">31% of the organization&apos;s total usage</div>
-            </Card>
-            <Card className="p-4">
-              <div className="text-sm text-mist">Most-used provider</div>
-              <div className="mt-1.5 font-mono text-[28px] font-semibold text-frost">OpenRouter</div>
-              <div className="mt-1 text-xs text-shadow">1.4M tokens</div>
-            </Card>
-            <Card className="p-4">
-              <div className="text-sm text-mist">Most-used for</div>
-              <div className="mt-1.5 font-mono text-[28px] font-semibold text-frost">feature_build</div>
-              <div className="mt-1 text-xs text-shadow">1.1M tokens &middot; 52%</div>
-            </Card>
+            <StatCard
+              label={`Tokens consumed (${USAGE_DEFAULT_DAYS}d)`}
+              value={totals ? formatTokens(totals.tokens) : "—"}
+              hint="Measured across this project's agent sessions"
+            />
+            <StatCard
+              label="Most-used provider"
+              value={topProvider ? providerLabel(topProvider.providerName) : "—"}
+              hint={topProvider ? `${formatTokens(topProvider.tokens)} tokens` : "No sessions yet"}
+            />
+            <StatCard
+              label="Most-used for"
+              value={topKind ? jobKindMeta(topKind.jobKind as UsageJobKind).label : "—"}
+              hint={
+                topKind
+                  ? `${formatTokens(topKind.tokens)} tokens · ${topKind.sessions} session${topKind.sessions === 1 ? "" : "s"}`
+                  : "No sessions yet"
+              }
+            />
           </div>
 
-          <Card className="p-4 sm:p-5">
-            {providerUsage.map((provider, i) => (
-              <div key={provider.provider} className={i > 0 ? "mt-5 border-t border-rime-soft pt-5" : ""}>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="text-[15px] font-medium text-frost">{provider.provider}</div>
-                  <div className="font-mono text-sm text-mist">{provider.tokens}</div>
-                </div>
-                <div className="mt-3.5 h-2 overflow-hidden rounded-full bg-surface-02">
-                  <div className="h-full rounded-full bg-bifrost" style={{ width: `${provider.pct}%` }} />
-                </div>
-                <div className="mt-2.5 text-xs text-shadow">
-                  {provider.pct}% of this project&apos;s usage this cycle
-                </div>
-              </div>
-            ))}
-          </Card>
+          {loaded && !error && totals?.sessions === 0 && (
+            <p className="mb-6 text-sm text-mist">
+              No agent runs for this project reported usage in the last{" "}
+              {USAGE_DEFAULT_DAYS} days.
+            </p>
+          )}
+
+          <BreakdownCard
+            title="By provider"
+            description={`Share of this project's measured tokens, last ${USAGE_DEFAULT_DAYS} days.`}
+            emptyMessage="No provider usage recorded for this project in this window."
+            rows={(report?.byProvider ?? []).map((provider) => {
+              const label = providerLabel(provider.providerName);
+              return (
+                <BreakdownRow
+                  key={label}
+                  label={label}
+                  detail={`${provider.sessions} session${provider.sessions === 1 ? "" : "s"} · ${formatCost(provider.costUsd)}`}
+                  barPct={sharePercent(provider.tokens, totals?.tokens ?? 0)}
+                  right={formatTokens(provider.tokens)}
+                  leading={
+                    <span
+                      className={cn(
+                        "size-2 shrink-0 rounded-full",
+                        provider.providerName ? "bg-bifrost" : "bg-mist",
+                      )}
+                    />
+                  }
+                />
+              );
+            })}
+          />
+
+          <BreakdownCard
+            title="By session type"
+            description={`Share of this project's measured tokens, last ${USAGE_DEFAULT_DAYS} days.`}
+            emptyMessage="No sessions recorded for this project in this window."
+            rows={(report?.byKind ?? []).map((bucket) => {
+              const meta = jobKindMeta(bucket.jobKind as UsageJobKind);
+              return (
+                <BreakdownRow
+                  key={bucket.jobKind}
+                  label={meta.label}
+                  detail={`${bucket.sessions} session${bucket.sessions === 1 ? "" : "s"}`}
+                  barPct={sharePercent(bucket.tokens, totals?.tokens ?? 0)}
+                  right={formatTokens(bucket.tokens)}
+                  leading={<span className={cn("size-2 shrink-0 rounded-full", meta.dotClass)} />}
+                />
+              );
+            })}
+          />
         </div>
       </main>
     </AppShell>

@@ -37,6 +37,10 @@ import type {
   Test,
   AgenticReview,
   TestingResults,
+  OrganizationAnalyticsReport,
+  OrganizationUsageReport,
+  ProjectAnalyticsReport,
+  ProjectUsageReport,
 } from "@/lib/features/types";
 
 async function parseJson<T>(response: Response): Promise<T> {
@@ -1275,4 +1279,61 @@ export async function fetchFeatureAgenticReview(
     { cache: "no-store", credentials: "include" },
   );
   return parseJson<AgenticReview | null>(response);
+}
+
+// --- Usage / analytics reporting (ADR 023) ---
+
+/** Default reporting window, mirroring the API's own default. */
+export const USAGE_DEFAULT_DAYS = 30;
+
+/**
+ * The organization's measured token/cost consumption. `days` bounds the
+ * window; the response also carries the immediately preceding window's totals
+ * so a page can show a period-over-period change without a second request.
+ */
+export async function fetchOrganizationUsage(
+  organizationId: string,
+  days: number = USAGE_DEFAULT_DAYS,
+): Promise<OrganizationUsageReport> {
+  const response = await fetch(
+    apiUrl(`/organizations/${organizationId}/usage?days=${days}`),
+    { cache: "no-store", credentials: "include" },
+  );
+  return parseJson<OrganizationUsageReport>(response);
+}
+
+/** The organization's session activity and consumption breakdowns. */
+export async function fetchOrganizationAnalytics(
+  organizationId: string,
+  days: number = USAGE_DEFAULT_DAYS,
+): Promise<OrganizationAnalyticsReport> {
+  const response = await fetch(
+    apiUrl(`/organizations/${organizationId}/analytics?days=${days}`),
+    { cache: "no-store", credentials: "include" },
+  );
+  return parseJson<OrganizationAnalyticsReport>(response);
+}
+
+/** One project's slice of the organization's measured consumption. */
+export async function fetchProjectUsage(
+  projectId: string,
+  days: number = USAGE_DEFAULT_DAYS,
+): Promise<ProjectUsageReport> {
+  const response = await fetch(apiUrl(`/projects/${projectId}/usage?days=${days}`), {
+    cache: "no-store",
+    credentials: "include",
+  });
+  return parseJson<ProjectUsageReport>(response);
+}
+
+/** One project's session activity and consumption breakdowns. */
+export async function fetchProjectAnalytics(
+  projectId: string,
+  days: number = USAGE_DEFAULT_DAYS,
+): Promise<ProjectAnalyticsReport> {
+  const response = await fetch(apiUrl(`/projects/${projectId}/analytics?days=${days}`), {
+    cache: "no-store",
+    credentials: "include",
+  });
+  return parseJson<ProjectAnalyticsReport>(response);
 }
