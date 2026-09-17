@@ -2,6 +2,7 @@ import { apiUrl } from "@/lib/config";
 import type {
   AgentJobKind,
   AuditEventsResponse,
+  DeployHistoryResponse,
   DeployStatus,
   Design,
   DesignDetailResponse,
@@ -211,6 +212,30 @@ export async function triggerDeploy(projectId: string): Promise<void> {
   const response = await fetch(apiUrl(`/projects/${projectId}/deploy`), {
     method: "POST",
     credentials: "include",
+  });
+  await parseJson<unknown>(response);
+}
+
+/** ADR 022: the project's deploy history plus the revisions it can roll back to. */
+export async function fetchDeployHistory(projectId: string): Promise<DeployHistoryResponse> {
+  const response = await fetch(apiUrl(`/projects/${projectId}/deploys`), {
+    cache: "no-store",
+    credentials: "include",
+  });
+  return parseJson<DeployHistoryResponse>(response);
+}
+
+/**
+ * ADR 022: rolls the primary deployment back to an earlier revision. Enqueues a
+ * `rollback` job — the API rejects an unknown target, the already-live revision,
+ * or a request made while another deployment operation is in flight.
+ */
+export async function requestRollback(projectId: string, revision: number): Promise<void> {
+  const response = await fetch(apiUrl(`/projects/${projectId}/rollback`), {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ revision }),
   });
   await parseJson<unknown>(response);
 }

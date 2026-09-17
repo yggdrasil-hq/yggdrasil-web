@@ -2,9 +2,12 @@ import { ORG_ROLE_LABELS } from "@/lib/features/types";
 import type {
   ActionQueueItem,
   AgenticReview,
+  DeployHistoryResponse,
+  DeployKind,
   DeployStatus,
   Design,
   DesignDetailResponse,
+  ProjectDeploy,
   DesignEventsResponse,
   DesignSession,
   DesignsResponse,
@@ -492,9 +495,106 @@ export function getMockDeployStatus(projectId: string): DeployStatus {
       lastError: null,
       startedAt: null,
       completedAt: null,
+      kind: null,
+      revision: null,
       url: mockDeployUrl(projectId),
     }
   );
+}
+
+/**
+ * ADR 022: the in-memory deploy ledger, keyed by project. Mirrors the real
+ * `project_deploys` table's shape closely enough to exercise the history and
+ * rollback UI without a real Orchestrator.
+ */
+export const mockProjectDeploys: Record<string, ProjectDeploy[]> = {};
+
+/** The revision mock deploys count up from, so history looks plausible. */
+function nextMockRevision(projectId: string): number {
+  const existing = mockProjectDeploys[projectId] ?? [];
+  const highest = existing.reduce((max, entry) => Math.max(max, entry.helmRevision ?? 0), 0);
+  return highest + 1;
+}
+
+function recordMockDeploy(
+  projectId: string,
+  kind: DeployKind,
+  targetRevision: number | null,
+): void {
+  const now = new Date().toISOString();
+  const revision = nextMockRevision(projectId);
+  const entries = mockProjectDeploys[projectId] ?? [];
+  mockProjectDeploys[projectId] = [
+    {
+      id: `mock_deploy_${projectId}_${revision}`,
+      jobId: null,
+      kind,
+      helmRevision: revision,
+      targetRevision,
+      status: "completed",
+      lastError: null,
+      ref: null,
+      createdAt: now,
+    },
+    ...entries,
+  ];
+
+  mockDeployStatuses[projectId] = {
+    status: "completed",
+    lastError: null,
+    startedAt: now,
+    completedAt: now,
+    kind,
+    revision,
+    url: mockDeployUrl(projectId),
+  };
+}
+
+export function getMockDeployHistory(projectId: string): DeployHistoryResponse {
+  const deploys = mockProjectDeploys[projectId] ?? [];
+  const currentRevision =
+    deploys.find((entry) => entry.helmRevision !== null)?.helmRevision ?? null;
+  return {
+    deploys,
+    currentRevision,
+    // Excludes what is live, matching the real endpoint: rolling back to the
+    // running revision is a no-op and is never offered.
+    rollbackTargets: deploys
+      .filter(
+        (entry) =>
+          entry.status === "completed" &&
+          entry.helmRevision !== null &&
+          entry.helmRevision !== currentRevision,
+      )
+      .map((entry) => ({
+        revision: entry.helmRevision as number,
+        deployedAt: entry.createdAt,
+        kind: entry.kind,
+      })),
+    url: mockDeployUrl(projectId),
+  };
+}
+
+export type TriggerMockRollbackResult = "ok" | "not_found" | "unknown_revision" | "in_progress";
+
+/** Mirrors the real POST /:projectId/rollback's preconditions, completing immediately. */
+export function triggerMockRollback(
+  projectId: string,
+  revision: number,
+): TriggerMockRollbackResult {
+  const project = getMockProject(projectId);
+  if (!project) return "not_found";
+
+  const status = mockDeployStatuses[projectId];
+  if (status?.status === "pending" || status?.status === "running") return "in_progress";
+
+  const history = getMockDeployHistory(projectId);
+  if (!history.rollbackTargets.some((target) => target.revision === revision)) {
+    return "unknown_revision";
+  }
+
+  recordMockDeploy(projectId, "rollback", revision);
+  return "ok";
 }
 
 export type TriggerMockDeployResult = "ok" | "not_found" | "not_ready" | "in_progress";
@@ -507,14 +607,9 @@ export function triggerMockDeploy(projectId: string): TriggerMockDeployResult {
   const current = mockDeployStatuses[projectId];
   if (current?.status === "pending" || current?.status === "running") return "in_progress";
 
-  const now = new Date().toISOString();
-  mockDeployStatuses[projectId] = {
-    status: "completed",
-    lastError: null,
-    startedAt: now,
-    completedAt: now,
-    url: mockDeployUrl(projectId),
-  };
+  // recordMockDeploy also updates the deploy status, so it is the single
+  // place a mock deploy's revision is assigned.
+  recordMockDeploy(projectId, "deploy", null);
   return "ok";
 }
 

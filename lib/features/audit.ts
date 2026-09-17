@@ -21,6 +21,7 @@ export const AUDIT_ACTION_GROUPS = [
   { prefix: "model_provider.", label: "Model providers" },
   { prefix: "model.", label: "Model catalog" },
   { prefix: "job_model_default.", label: "Job model defaults" },
+  { prefix: "deploy.", label: "Deployments" },
   { prefix: "github.", label: "GitHub App" },
 ] as const;
 
@@ -72,6 +73,9 @@ const ACTION_LABELS: Record<string, string> = {
   "github.repos_synced": "Repositories synced from GitHub",
   "github.installation_updated": "GitHub App installation updated",
   "github.repositories_updated": "GitHub App repo access changed",
+  // ADR 022: a primary-deployment rollback. Grouped under "Deployments"
+  // above; the routine deploy trigger is deliberately unaudited (ADR 028).
+  "deploy.rolled_back": "Deployment rolled back",
 };
 
 function titleCaseWords(value: string): string {

@@ -218,13 +218,63 @@ export interface FeatureEventsResponse {
   events: FeatureEvent[];
 }
 
-/** A project's most recent `deploy` job (ADR 013 addendum) — no `events`, unlike FeatureEventsResponse: deploy runs synchronously in the Orchestrator with no curated event stream. */
+/** A project's most recent deployment operation (ADR 013 addendum, widened to rollbacks by ADR 022) — no `events`, unlike FeatureEventsResponse: deploy and rollback runs synchronously in the Orchestrator with no curated event stream. */
 export interface DeployStatus {
   status: JobStatus | null;
   lastError: string | null;
   startedAt: string | null;
   completedAt: string | null;
+  /**
+   * Which operation is being reported (ADR 022). A rollback changes what is
+   * running just as a deploy does, so the status endpoint spans both and the
+   * UI can label a rollback as one rather than as a fresh deploy.
+   */
+  kind: DeployKind | null;
+  /** The Helm revision currently live, from the deploy ledger (ADR 022). Null before the first successful deploy. */
+  revision: number | null;
   /** Deterministic from the project slug (`<slug>.apps.<domain>`) — always present regardless of job status; only link to it once `status === "completed"`. */
+  url: string;
+}
+
+/**
+ * ADR 022: which operation produced a ledger entry. `rollback` is a distinct
+ * job kind, not a deploy variant, so history and audit can tell them apart.
+ */
+export type DeployKind = "deploy" | "rollback";
+
+/** One entry in a project's deploy ledger — a deploy or rollback that reached a terminal state. */
+export interface ProjectDeploy {
+  id: string;
+  jobId: string | null;
+  kind: DeployKind;
+  /**
+   * The Helm revision this operation produced, or null if it produced none
+   * (a failed attempt). Not the same as `targetRevision`: a rollback creates a
+   * new revision rather than rewinding, so rolling back to 3 from 9 produces
+   * 10 and records both.
+   */
+  helmRevision: number | null;
+  /** Set only for a rollback: the earlier revision the operator asked for. */
+  targetRevision: number | null;
+  status: "completed" | "failed";
+  lastError: string | null;
+  ref: string | null;
+  createdAt: string;
+}
+
+/** A revision the project can be rolled back to (ADR 022). */
+export interface RollbackTarget {
+  revision: number;
+  deployedAt: string;
+  kind: DeployKind;
+}
+
+/** A project's deploy history plus the revisions it can be rolled back to. */
+export interface DeployHistoryResponse {
+  deploys: ProjectDeploy[];
+  currentRevision: number | null;
+  /** Already excludes the current revision — rolling back to what is live is a no-op. */
+  rollbackTargets: RollbackTarget[];
   url: string;
 }
 
