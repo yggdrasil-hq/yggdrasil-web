@@ -28,16 +28,19 @@ import type {
   OrgModel,
   OrgProvider,
   OrgRole,
+  OrganizationAllocationsResponse,
   Project,
   ProjectJobModelOverride,
   ProjectOverview,
   ProjectPreviewsResponse,
+  ProjectResourceQuota,
   ProjectSecretMetadata,
   ProviderType,
   RolesResponse,
   Test,
   TestRunHistoryEntry,
   TestRunsResponse,
+  TokenCapState,
   AgenticReview,
   TestingResults,
   OrganizationAnalyticsReport,
@@ -1408,4 +1411,58 @@ export async function fetchTestRun(
     { cache: "no-store", credentials: "include" },
   );
   return parseJson<TestRunHistoryEntry>(response);
+}
+
+/**
+ * ADR 030: an organization's per-project allocation caps — both the monthly
+ * token cap and the per-namespace resource quota, in one read so the two pages
+ * cannot disagree about the period or the defaults.
+ *
+ * Readable by any member (a blocked developer needs to see why work stopped);
+ * only admins can change either figure, which the API enforces.
+ */
+export async function fetchOrganizationAllocations(
+  organizationId: string,
+): Promise<OrganizationAllocationsResponse> {
+  const response = await fetch(apiUrl(`/organizations/${organizationId}/allocations`), {
+    cache: "no-store",
+    credentials: "include",
+  });
+  return parseJson<OrganizationAllocationsResponse>(response);
+}
+
+/** Sets or clears one project's monthly token cap (null clears it). */
+export async function setProjectTokenCap(
+  organizationId: string,
+  projectId: string,
+  monthlyTokenCap: number | null,
+): Promise<TokenCapState> {
+  const response = await fetch(
+    apiUrl(`/organizations/${organizationId}/allocations/projects/${projectId}/token-cap`),
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ monthlyTokenCap }),
+    },
+  );
+  return parseJson<TokenCapState>(response);
+}
+
+/** Sets one project's namespace resource limits. */
+export async function setProjectResourceQuota(
+  organizationId: string,
+  projectId: string,
+  quota: { cpuMillicores: number; memoryMib: number; pods: number },
+): Promise<ProjectResourceQuota> {
+  const response = await fetch(
+    apiUrl(`/organizations/${organizationId}/allocations/projects/${projectId}/quota`),
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(quota),
+    },
+  );
+  return parseJson<ProjectResourceQuota>(response);
 }

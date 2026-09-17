@@ -1,12 +1,15 @@
 /**
  * Static placeholder data for the pages that are still mock-only under ADR 017
- * (deployments, infrastructure, allocations) — visual parity with `design/`,
- * no backend concept behind them yet.
+ * (the organization-level deployments view, and infrastructure) — visual parity
+ * with `design/`, no backend concept behind them yet.
  *
  * The usage/analytics placeholders that used to live here are gone: those pages
- * now render real per-job token accounting (ADR 023). Anything the provider
- * itself owns — a quota limit, a billing-cycle reset — is deliberately not
- * faked anywhere, because Yggdrasil cannot observe it.
+ * now render real per-job token accounting (ADR 023). The allocation
+ * placeholders are gone for the same reason: /allocations/api and
+ * /allocations/infra now render and edit real per-project caps (ADR 030).
+ * Anything the provider or the cluster itself owns — a provider's billing-cycle
+ * reset, live cluster capacity and utilisation — is deliberately not faked
+ * anywhere, because nothing in the system observes it.
  */
 
 export const orgDeploymentGroups = [
@@ -35,59 +38,5 @@ export const orgDeploymentGroups = [
     letter: "D",
     linked: false,
     emptyMessage: "No production deployment configured for this project.",
-  },
-];
-
-export const allocationsInfraRows = [
-  { letter: "A", name: "Acme Web App", cpu: "2 vCPU", memory: "4 GB", maxConcurrent: "3" },
-  { letter: "I", name: "Internal Ops Console", cpu: "1 vCPU", memory: "2 GB", maxConcurrent: "2" },
-  { letter: "M", name: "Marketing Site", cpu: "1 vCPU", memory: "2 GB", maxConcurrent: "1" },
-  { letter: "D", name: "Data Pipeline", cpu: "2 vCPU", memory: "4 GB", maxConcurrent: "2" },
-];
-
-export const allocationsApiRows = [
-  {
-    letter: "A",
-    name: "Acme Web App",
-    providers: [
-      { name: "OpenRouter", on: true },
-      { name: "Anthropic", on: true },
-      { name: "OpenAI", on: false },
-      { name: "Together AI", on: false },
-    ],
-    cap: "4M tokens",
-  },
-  {
-    letter: "I",
-    name: "Internal Ops Console",
-    providers: [
-      { name: "OpenRouter", on: true },
-      { name: "Anthropic", on: false },
-      { name: "OpenAI", on: false },
-      { name: "Together AI", on: false },
-    ],
-    cap: "No cap",
-  },
-  {
-    letter: "M",
-    name: "Marketing Site",
-    providers: [
-      { name: "OpenRouter", on: true },
-      { name: "Anthropic", on: true },
-      { name: "OpenAI", on: false },
-      { name: "Together AI", on: false },
-    ],
-    cap: "1M tokens",
-  },
-  {
-    letter: "D",
-    name: "Data Pipeline",
-    providers: [
-      { name: "OpenRouter", on: true },
-      { name: "Anthropic", on: false },
-      { name: "OpenAI", on: false },
-      { name: "Together AI", on: true },
-    ],
-    cap: "No cap",
   },
 ];

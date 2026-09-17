@@ -830,3 +830,55 @@ export interface TestRunsResponse {
   testId: string;
   runs: TestRunHistoryEntry[];
 }
+
+// --- Resource allocation caps (ADR 030) ---
+//
+// Two independent per-project limits an organization admin can set. Both are
+// *overrides*: a project with none falls back to the platform defaults the API
+// reports alongside them, which is why `fromOverride` exists rather than the
+// values being pre-baked.
+
+/** A project's monthly token cap standing for the current period. */
+export interface TokenCapState {
+  projectId: string;
+  /** Null means uncapped — deliberately distinct from 0, which permits nothing further. */
+  cap: number | null;
+  usedTokens: number;
+  remainingTokens: number | null;
+  /** True once the project may not start further token-consuming work this period. */
+  exceeded: boolean;
+  /** Inclusive start of the enforced period, ISO-8601 UTC. */
+  periodStart: string;
+  /** Exclusive end of the enforced period, ISO-8601 UTC. */
+  periodEnd: string;
+}
+
+/**
+ * A project's effective namespace limits, in normalized units — millicores and
+ * MiB, matching what the API stores. Formatting into "2 vCPU" / "4 GiB" is the
+ * web's job, so the wire format stays exact rather than locale-shaped.
+ */
+export interface ProjectResourceQuota {
+  cpuMillicores: number;
+  memoryMib: number;
+  pods: number;
+  /** False when these are the platform defaults rather than something an admin set. */
+  fromOverride: boolean;
+}
+
+export interface ProjectAllocation {
+  projectId: string;
+  projectName: string;
+  /** Null means uncapped. */
+  monthlyTokenCap: number | null;
+  quota: ProjectResourceQuota;
+  capState: TokenCapState;
+}
+
+export interface OrganizationAllocationsResponse {
+  organizationId: string;
+  periodStart: string;
+  periodEnd: string;
+  defaults: { cpuMillicores: number; memoryMib: number; pods: number };
+  projects: ProjectAllocation[];
+}
