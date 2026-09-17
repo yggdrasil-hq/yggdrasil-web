@@ -8,6 +8,7 @@ import {
   fetchDeployHistory,
   fetchDeployStatus,
   fetchProject,
+  fetchProjectPreviews,
   requestRollback,
   triggerDeploy,
 } from "@/lib/api";
@@ -20,7 +21,21 @@ import {
   isDeploymentInFlight,
   liveDeploymentUrl,
 } from "@/lib/features/deploy-history";
-import type { DeployHistoryResponse, DeployStatus, Project } from "@/lib/features/types";
+import {
+  describePreview,
+  previewHostLabel,
+  previewRowSummary,
+  previewStatusLabel,
+  previewUrl,
+  summarizePreviews,
+} from "@/lib/features/previews";
+import type {
+  DeployHistoryResponse,
+  DeployStatus,
+  JobPreview,
+  Project,
+  ProjectPreviewsResponse,
+} from "@/lib/features/types";
 import { cn } from "@/lib/utils";
 
 const POLL_INTERVAL_MS = 3000;
@@ -49,15 +64,18 @@ const statusDot = {
  *  - **Staging** was the visual stand-in for open question #9. ADR 022 settled
  *    that question by *deferring* a staging environment, so keeping a Staging
  *    row would advertise something this decision deliberately does not build.
- *  - Preview's two rows belonged to ADR 003's ephemeral-tunnel design, which
- *    is still unbuilt for a different reason (issue #1) and has nothing to do
- *    with this page's data. The Preview pill and a labelled placeholder are
- *    kept so the route still shows where that work lands.
+ *  - Preview's two mock rows are now **real**: ADR 003's ephemeral deployments
+ *    (issue #1) are implemented, and this row renders what is actually running.
+ *    It stays a single row rather than becoming one row per preview, because the
+ *    number of live previews is bounded by the per-project cap (ADR 003 §17) and
+ *    each is transient — a list would mostly be empty, and the count plus links
+ *    says the same thing in less space.
  */
 export function ProjectDeploymentsClient({ projectId }: { projectId: string }) {
   const [project, setProject] = useState<Project | null>(null);
   const [history, setHistory] = useState<DeployHistoryResponse | null>(null);
   const [deploy, setDeploy] = useState<DeployStatus | null>(null);
+  const [previews, setPreviews] = useState<ProjectPreviewsResponse>({ previews: [] });
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [confirmingRevision, setConfirmingRevision] = useState<number | null>(null);
@@ -65,14 +83,16 @@ export function ProjectDeploymentsClient({ projectId }: { projectId: string }) {
   const [redeploying, setRedeploying] = useState(false);
 
   const load = useCallback(async () => {
-    const [projectData, historyData, statusData] = await Promise.all([
+    const [projectData, historyData, statusData, previewData] = await Promise.all([
       fetchProject(projectId),
       fetchDeployHistory(projectId),
       fetchDeployStatus(projectId),
+      fetchProjectPreviews(projectId),
     ]);
     setProject(projectData);
     setHistory(historyData);
     setDeploy(statusData);
+    setPreviews(previewData);
   }, [projectId]);
 
   useEffect(() => {
@@ -149,6 +169,7 @@ export function ProjectDeploymentsClient({ projectId }: { projectId: string }) {
   }
 
   const liveUrl = liveDeploymentUrl(deploy.status, deploy.url);
+  const previewSummary = summarizePreviews(previews.previews);
   const currentRevision = history.currentRevision;
   const productionStatus = inFlight
     ? { label: "Deploying", tone: "building" as const }
@@ -244,20 +265,56 @@ export function ProjectDeploymentsClient({ projectId }: { projectId: string }) {
             </div>
           </div>
 
-          {/* Preview — still unbuilt (ADR 003's ephemeral tunnel, issue #1);
-              kept as an explicit empty state rather than an invented row. */}
-          <div className="mt-3 flex flex-wrap items-center gap-4 rounded-md border border-rime-soft p-4 sm:flex-nowrap">
-            <span
-              className={cn(
-                "inline-flex h-[22px] shrink-0 items-center rounded-full px-2.5 text-[11px] font-semibold uppercase tracking-wide",
-                envStyles.Preview,
-              )}
-            >
-              Preview
-            </span>
-            <div className="min-w-0 flex-1 truncate text-xs text-shadow">
-              Per-run preview tunnels are designed (ADR 003 §15) but not implemented yet.
+          {/* Preview — real, from the Orchestrator's preview registry (ADR 003
+              §15). Only live previews are linked: a torn-down host is a dead
+              link and a failed one never existed (see lib/features/previews). */}
+          <div className="mt-3 rounded-md border border-rime-soft p-4">
+            <div className="flex flex-wrap items-center gap-4 sm:flex-nowrap">
+              <span
+                className={cn(
+                  "inline-flex h-[22px] shrink-0 items-center rounded-full px-2.5 text-[11px] font-semibold uppercase tracking-wide",
+                  envStyles.Preview,
+                )}
+              >
+                Preview
+              </span>
+              <div className="min-w-0 flex-1 text-xs text-shadow">
+                {previewRowSummary(previewSummary)}
+              </div>
             </div>
+
+            {previewSummary.live.length > 0 && (
+              <ul className="mt-3 space-y-2">
+                {previewSummary.live.map((preview) => (
+                  <PreviewLink key={preview.jobId} preview={preview} />
+                ))}
+              </ul>
+            )}
+
+            {/* Ended previews are kept visible but never linked — the user is
+                looking at why a preview they may have been using has gone. */}
+            {previewSummary.ended.length > 0 && (
+              <details className="mt-3">
+                <summary className="cursor-pointer text-xs text-shadow">
+                  {previewSummary.ended.length === 1
+                    ? "1 ended preview"
+                    : `${previewSummary.ended.length} ended previews`}
+                </summary>
+                <ul className="mt-2 space-y-1.5">
+                  {previewSummary.ended.map((preview) => (
+                    <li key={preview.jobId} className="flex flex-wrap items-center gap-2 text-xs">
+                      <span className="rounded-full border border-rime px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-mist">
+                        {previewStatusLabel(preview.status)}
+                      </span>
+                      <span className="truncate font-mono text-shadow">
+                        {previewHostLabel(preview)}
+                      </span>
+                      <span className="text-shadow">{describePreview(preview)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
           </div>
 
           {inFlight && (
@@ -384,4 +441,35 @@ function formatTimestamp(iso: string): string {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
   return `${days}d ago`;
+}
+
+/**
+ * One live preview: its host as an external link, plus when it came up.
+ *
+ * Rendered only for previews `previewUrl` returned a URL for, so the anchor is
+ * never a dead link — the liveness rule lives in lib/features/previews and is
+ * unit-tested there rather than re-derived in JSX.
+ */
+function PreviewLink({ preview }: { preview: JobPreview }) {
+  const url = previewUrl(preview);
+  if (!url) return null;
+
+  return (
+    <li className="flex flex-wrap items-center gap-2 text-xs">
+      <span className="inline-flex items-center gap-1.5 text-shadow">
+        <span className="size-1.5 shrink-0 rounded-full bg-status-approved" />
+        {previewStatusLabel(preview.status)}
+      </span>
+      <a
+        href={url}
+        target="_blank"
+        rel="noreferrer"
+        className="flex min-w-0 items-center gap-1.5 truncate font-mono text-frost hover:text-teal"
+      >
+        {previewHostLabel(preview)}
+        <ExternalLink className="size-3 shrink-0 text-shadow" />
+      </a>
+      <span className="text-shadow">{formatTimestamp(preview.createdAt)}</span>
+    </li>
+  );
 }

@@ -773,3 +773,32 @@ export interface ProjectAnalyticsReport {
   byModel: UsageByModel[];
   recentSessions: UsageSession[];
 }
+
+/** Only `active` is a preview that is actually reachable (ADR 003 §15). */
+export type PreviewStatus = "active" | "torn_down" | "failed";
+
+/**
+ * One ephemeral preview deployment for a job (ADR 003 §10/§15).
+ *
+ * `host` is a bare hostname, not a URL: the Orchestrator computes preview
+ * identity (it is the side that knows the target cluster's apps domain) and
+ * reports it verbatim, so the scheme is composed when rendering rather than
+ * stored in a row that outlives any decision about it.
+ *
+ * The status is what lets the page distinguish a preview that is live right now
+ * from one whose job has ended: only `active` should ever be linked to, since a
+ * torn-down host is a dead link and a failed one never existed.
+ */
+export interface JobPreview {
+  jobId: string;
+  host: string;
+  status: PreviewStatus;
+  /** Set only when `status` is "failed" — why the preview never came up. */
+  lastError: string | null;
+  createdAt: string;
+  tornDownAt: string | null;
+}
+
+export interface ProjectPreviewsResponse {
+  previews: JobPreview[];
+}
