@@ -33,6 +33,7 @@ import {
   clearProjectJobModelOverride,
   deleteProject,
   deleteProjectSecret,
+  fetchOrgExtensions,
   fetchOrgModels,
   fetchProject,
   fetchProjectJobModelOverrides,
@@ -40,11 +41,13 @@ import {
   ProjectDeletionBlockedError,
   removeProjectRepository,
   setProjectJobModelOverride,
+  setProjectUploadedExtensionsEnabled,
   upsertProjectSecret,
   type ProjectDeletionBlocker,
 } from "@/lib/api";
 import { ModelSecretField } from "@/components/settings/model-secret-field";
 import { ProjectNotificationMuteCard } from "@/components/settings/project-notification-mute";
+import { TRUST_WARNING_SHORT, projectLoadState } from "@/lib/features/extensions";
 import { appRoute } from "@/lib/config";
 import { AGENT_JOB_KINDS, AGENT_JOB_KIND_LABELS } from "@/lib/features/types";
 import type {
@@ -125,6 +128,14 @@ export function ProjectSettingsClient({ projectId }: ProjectSettingsClientProps)
   const [overrideError, setOverrideError] = useState<string | null>(null);
   const [savingOverride, setSavingOverride] = useState<AgentJobKind | null>(null);
 
+  // ADR 025: this project's opt-in for organization-uploaded extensions. The
+  // count is best-effort: the extension list is admin-only, so a project owner
+  // who is not an org admin gets a 403 there — which is why the copy
+  // distinguishes "unknown" from "none" (see lib/features/extensions.ts).
+  const [savingExtensions, setSavingExtensions] = useState(false);
+  const [extensionsError, setExtensionsError] = useState<string | null>(null);
+  const [orgExtensionCount, setOrgExtensionCount] = useState<number | null>(null);
+
   useEffect(() => {
     let active = true;
 
@@ -146,6 +157,19 @@ export function ProjectSettingsClient({ projectId }: ProjectSettingsClientProps)
         if (active) {
           setOrgModels(models);
           setJobOverrides(overrides);
+        }
+
+        // Best-effort, and deliberately not part of the Promise.all above: the
+        // extension list is org-admin-only, so a project owner who is not an
+        // admin gets a 403. That must not fail the whole settings page — the
+        // toggle they *can* use is still worth rendering.
+        try {
+          const extensionResponse = await fetchOrgExtensions(projectData.organizationId);
+          if (active) {
+            setOrgExtensionCount(extensionResponse.extensions.filter((item) => item.active).length);
+          }
+        } catch {
+          if (active) setOrgExtensionCount(null);
         }
       } catch (loadError) {
         if (active) {
@@ -185,6 +209,21 @@ export function ProjectSettingsClient({ projectId }: ProjectSettingsClientProps)
       );
     } finally {
       setReverting(false);
+    }
+  }
+
+  async function handleToggleExtensions(enabled: boolean) {
+    setSavingExtensions(true);
+    setExtensionsError(null);
+    try {
+      const updated = await setProjectUploadedExtensionsEnabled(projectId, enabled);
+      setProject(updated);
+    } catch (toggleError) {
+      setExtensionsError(
+        toggleError instanceof Error ? toggleError.message : "Failed to change extension loading",
+      );
+    } finally {
+      setSavingExtensions(false);
     }
   }
 
@@ -345,6 +384,47 @@ export function ProjectSettingsClient({ projectId }: ProjectSettingsClientProps)
               </CardHeader>
             </Card>
           ) : null}
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Uploaded extensions</CardTitle>
+              <CardDescription>
+                {project
+                  ? projectLoadState(project, orgExtensionCount).label
+                  : "Whether this project's Pi jobs load extensions your organization uploaded."}
+              </CardDescription>
+            </CardHeader>
+            <div className="space-y-3 px-4 pb-4">
+              <p className="text-xs text-shadow">{TRUST_WARNING_SHORT}</p>
+              {extensionsError ? (
+                <p className="text-xs text-red-400">{extensionsError}</p>
+              ) : null}
+              <label className="flex items-center gap-2 text-sm text-frost">
+                <input
+                  type="checkbox"
+                  checked={project?.uploadedExtensionsEnabled ?? false}
+                  disabled={!project || savingExtensions}
+                  onChange={(event) => void handleToggleExtensions(event.target.checked)}
+                />
+                Load organization extensions in this project
+              </label>
+              <p className="text-xs text-shadow">
+                Administered at{" "}
+                <Link
+                  className="underline"
+                  href={appRoute(
+                    project
+                      ? `/settings/organization/extensions?org=${project.organizationId}`
+                      : "/settings/organization/extensions",
+                  )}
+                >
+                  Organization settings → Extensions
+                </Link>
+                . Changing this affects jobs dispatched from now on; a job already running keeps the
+                revision it started with.
+              </p>
+            </div>
+          </Card>
 
           <Card>
             <CardHeader>

@@ -18,6 +18,7 @@ import {
   Menu,
   Rocket,
   ScrollText,
+  Puzzle,
   Server,
   Settings,
   SlidersHorizontal,
@@ -69,6 +70,7 @@ const orgSettingsNav = [
   { href: "/settings/organization/secrets", label: "Secrets", icon: KeyRound },
   { href: "/settings/organization/cluster", label: "Kubernetes cluster", icon: Server },
   { href: "/settings/organization/audit", label: "Audit", icon: ScrollText },
+  { href: "/settings/organization/extensions", label: "Extensions", icon: Puzzle },
 ] as const;
 
 // Static/mock-only pages (ADR 017 item 2) — no product decision behind these

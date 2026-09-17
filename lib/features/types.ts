@@ -21,6 +21,12 @@ export interface Project {
   modelConfigWarning: boolean;
   /** ADR 015 item 12: per-project Agentic Review gate, default on. */
   agenticReviewEnabled: boolean;
+  /**
+   * ADR 025 item 7: whether this project's Pi jobs load the organization's
+   * uploaded extensions. Default off; the narrower half of the trust
+   * decision, so it is an explicit act.
+   */
+  uploadedExtensionsEnabled: boolean;
   /** ADR 014: whether design sessions are enabled for this project. */
   hasDesignSurface: boolean;
   repositories: ProjectRepository[];
@@ -829,4 +835,68 @@ export interface TestRunHistoryEntry {
 export interface TestRunsResponse {
   testId: string;
   runs: TestRunHistoryEntry[];
+}
+
+// --- Organization Pi extensions (ADR 025) ---
+//
+// An uploaded extension is arbitrary code that runs inside a job container
+// holding the project's GitHub installation token and the model API key. The
+// API stores one row per file and serves the source only on the detail read,
+// so a second admin can review what is installed before the project opts in.
+
+export interface OrgExtensionUploader {
+  username: string | null;
+  displayName: string | null;
+}
+
+export interface OrgExtension {
+  id: string;
+  slug: string;
+  name: string;
+  /** The module Pi is pointed at; always one of the bundle's own files. */
+  entryPath: string;
+  /** Digest of the stored revision, also logged by the container that loads it. */
+  sourceSha256: string;
+  /** False means the kill switch is on: no project loads it. */
+  active: boolean;
+  uploadedBy: OrgExtensionUploader | null;
+  /** Projects in this org with loaded extensions turned on. */
+  enabledProjectCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OrgExtensionFile {
+  path: string;
+  content: string;
+  sizeBytes: number;
+}
+
+export interface OrgExtensionDetail extends OrgExtension {
+  files: OrgExtensionFile[];
+  enabledProjects: Array<{ id: string; name: string; slug: string }>;
+}
+
+export interface OrgExtensionsResponse {
+  extensions: OrgExtension[];
+}
+
+export interface OrgExtensionResponse {
+  extension: OrgExtension;
+}
+
+export interface OrgExtensionDetailResponse {
+  extension: OrgExtensionDetail;
+}
+
+export interface UploadOrgExtensionInput {
+  name: string;
+  slug?: string;
+  entryPath?: string;
+  files: Array<{ path: string; content: string }>;
+  /**
+   * Must be literally true. The API rejects an upload without it, so a
+   * client that never rendered the warning cannot upload by accident.
+   */
+  acknowledgedRisk: true;
 }

@@ -250,6 +250,7 @@ export const mockProject: Project = withRepositoryRemovalBlockedReason({
   githubAccessWarning: false,
   modelConfigWarning: false,
   agenticReviewEnabled: true,
+  uploadedExtensionsEnabled: false,
   hasDesignSurface: true,
   repositories: [
     {
@@ -767,6 +768,7 @@ export function createMockProject(input: {
     githubAccessWarning: false,
     modelConfigWarning: false,
     agenticReviewEnabled: true,
+    uploadedExtensionsEnabled: false,
     hasDesignSurface: true,
     repositories: input.repositories.map((repo, index) => ({
       id: `repo_${id}_${index}`,

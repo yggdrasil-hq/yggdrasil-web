@@ -23,6 +23,10 @@ import type {
   NotificationsResponse,
   OrgClusterMetadata,
   Organization,
+  OrgExtension,
+  OrgExtensionDetailResponse,
+  OrgExtensionResponse,
+  OrgExtensionsResponse,
   OrgInvite,
   OrgMember,
   OrgModel,
@@ -1408,4 +1412,105 @@ export async function fetchTestRun(
     { cache: "no-store", credentials: "include" },
   );
   return parseJson<TestRunHistoryEntry>(response);
+}
+
+// --- ADR 025: uploaded Pi extensions (org-scoped) ---
+//
+// Uploading is an org-admin action; the per-project opt-in is separate (see
+// setProjectUploadedExtensionsEnabled below). The detail read is the only one
+// that returns source, which is what lets a second admin review an extension
+// they did not upload themselves.
+
+export async function fetchOrgExtensions(
+  organizationId: string,
+): Promise<OrgExtensionsResponse> {
+  const response = await fetch(apiUrl(`/organizations/${organizationId}/extensions`), {
+    cache: "no-store",
+    credentials: "include",
+  });
+  return parseJson<OrgExtensionsResponse>(response);
+}
+
+export async function fetchOrgExtension(
+  organizationId: string,
+  extensionId: string,
+): Promise<OrgExtensionDetailResponse> {
+  const response = await fetch(
+    apiUrl(`/organizations/${organizationId}/extensions/${extensionId}`),
+    { cache: "no-store", credentials: "include" },
+  );
+  return parseJson<OrgExtensionDetailResponse>(response);
+}
+
+export async function uploadOrgExtension(
+  organizationId: string,
+  input: {
+    name: string;
+    slug?: string;
+    entryPath?: string;
+    files: Array<{ path: string; content: string }>;
+    acknowledgedRisk: true;
+  },
+): Promise<OrgExtension> {
+  const response = await fetch(apiUrl(`/organizations/${organizationId}/extensions`), {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  const body = await parseJson<OrgExtensionResponse>(response);
+  return body.extension;
+}
+
+export async function setOrgExtensionActive(
+  organizationId: string,
+  extensionId: string,
+  active: boolean,
+): Promise<OrgExtension> {
+  const response = await fetch(
+    apiUrl(`/organizations/${organizationId}/extensions/${extensionId}`),
+    {
+      method: "PATCH",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ active }),
+    },
+  );
+  const body = await parseJson<OrgExtensionResponse>(response);
+  return body.extension;
+}
+
+export async function deleteOrgExtension(
+  organizationId: string,
+  extensionId: string,
+): Promise<void> {
+  const response = await fetch(
+    apiUrl(`/organizations/${organizationId}/extensions/${extensionId}`),
+    { method: "DELETE", credentials: "include" },
+  );
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(body?.error ?? `API error: ${response.status} ${response.statusText}`);
+  }
+}
+
+/**
+ * The per-project half of ADR 025. Its own endpoint rather than part of the
+ * general project update, so a client cannot change this while saving
+ * something else.
+ */
+export async function setProjectUploadedExtensionsEnabled(
+  projectId: string,
+  uploadedExtensionsEnabled: boolean,
+): Promise<Project> {
+  const response = await fetch(
+    apiUrl(`/projects/${projectId}/uploaded-extensions-enabled`),
+    {
+      method: "PATCH",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ uploadedExtensionsEnabled }),
+    },
+  );
+  return parseJson<Project>(response);
 }
