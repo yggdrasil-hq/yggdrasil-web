@@ -35,6 +35,8 @@ import type {
   ProviderType,
   RolesResponse,
   Test,
+  TestRunHistoryEntry,
+  TestRunsResponse,
   AgenticReview,
   TestingResults,
   OrganizationAnalyticsReport,
@@ -1336,4 +1338,34 @@ export async function fetchProjectAnalytics(
     credentials: "include",
   });
   return parseJson<ProjectAnalyticsReport>(response);
+}
+
+/**
+ * ADR 026 (issue #16): a Test entity's own run history — the standalone
+ * Testing product's view. ADR 015's per-feature Testing tab is a different
+ * read (`fetchFeatureTestingResults`), because it answers a different
+ * question about the same reports.
+ */
+export async function fetchTestRuns(
+  projectId: string,
+  testId: string,
+): Promise<TestRunsResponse> {
+  const response = await fetch(apiUrl(`/projects/${projectId}/tests/${testId}/runs`), {
+    cache: "no-store",
+    credentials: "include",
+  });
+  return parseJson<TestRunsResponse>(response);
+}
+
+/** One run of one test, with its report and steps. */
+export async function fetchTestRun(
+  projectId: string,
+  testId: string,
+  jobId: string,
+): Promise<TestRunHistoryEntry> {
+  const response = await fetch(
+    apiUrl(`/projects/${projectId}/tests/${testId}/runs/${jobId}`),
+    { cache: "no-store", credentials: "include" },
+  );
+  return parseJson<TestRunHistoryEntry>(response);
 }

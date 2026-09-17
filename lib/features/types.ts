@@ -762,3 +762,31 @@ export interface ProjectAnalyticsReport {
   byModel: UsageByModel[];
   recentSessions: UsageSession[];
 }
+
+// --- Project-level test-run history (ADR 026, issues #3 / #16) ---
+//
+// Distinct from ADR 015's `TestingRun` above, which is the per-*feature*
+// Testing tab's shape. A Test entity's history answers "how has this scheduled
+// suite been doing", so entries carry the triggering context (`trigger`, `ref`)
+// and the job's timing, which the feature view has no use for.
+
+export interface TestRunHistoryEntry {
+  jobId: string;
+  testId: string;
+  status: JobStatus;
+  trigger: "feature" | "schedule" | null;
+  testGroup: "unit" | "integration" | null;
+  ref: string | null;
+  createdAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+  /** Computed by the API so both surfaces agree; null while still running. */
+  durationMs: number | null;
+  report: TestingReport | null;
+  steps: TestingStep[];
+}
+
+export interface TestRunsResponse {
+  testId: string;
+  runs: TestRunHistoryEntry[];
+}
