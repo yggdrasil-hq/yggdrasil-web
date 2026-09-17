@@ -13,7 +13,7 @@ interface BuildProgressPanelProps {
 }
 
 /**
- * Live view of a feature_build job's progress (mirrors SpecGrillPanel's
+ * Live view of a feature_build job's progress (mirrors FeatureGrillClient's
  * polling approach for spec_grill — a WebSocket relay is still not built,
  * ADR 006 item 8's scope cut). Only rendered by FeatureImplementationClient
  * (the Implementation stage page) while the feature is 'queued' or

@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useFeatureDetail } from "@/components/features/feature-detail-context";
-import { featureStageForStatus, featureStagePath } from "@/lib/features/stage";
+import { featureEntryPath } from "@/lib/features/grill";
 import { appRoute } from "@/lib/config";
 
 /**
@@ -12,16 +12,20 @@ import { appRoute } from "@/lib/config";
  * an overview dashboard (run history, token usage), but none of that has a
  * backing API today — its own design-note calls the token-usage numbers
  * "illustrative, no tracking exists yet." Rather than build a page around
- * invented data, this redirects to whichever of the six real stages
- * (lib/features/stage.ts) the feature's actual status currently maps to.
+ * invented data, this redirects to whichever page the feature's actual
+ * status maps to.
+ *
+ * For a `draft` feature that is now the full-page grill chat rather than the
+ * Spec stage page: the transcript *is* its spec stage until `submit_adr`
+ * lands, and this is the path the action queue's "Grill response needed"
+ * item links to (yggdrasil-web#1).
  */
 export function FeatureOverviewRedirect() {
   const router = useRouter();
   const { projectId, featureId, feature } = useFeatureDetail();
 
   useEffect(() => {
-    const stage = featureStageForStatus(feature);
-    router.replace(appRoute(featureStagePath(projectId, featureId, stage)));
+    router.replace(appRoute(featureEntryPath(projectId, featureId, feature)));
     // Only status/adrApproved actually change which stage we land on; other
     // feature-field changes (e.g. adrMarkdown edits) shouldn't re-trigger a
     // redirect once we've already navigated away from this route.

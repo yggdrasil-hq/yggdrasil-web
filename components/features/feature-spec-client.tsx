@@ -3,21 +3,25 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useFeatureDetail } from "@/components/features/feature-detail-context";
-import { SpecGrillPanel } from "@/components/features/spec-grill-panel";
 import { Markdown } from "@/components/markdown";
 import { Button } from "@/components/ui/button";
 import { fetchFeature, fetchFeatureEvents, retryFeatureGrill, updateFeature } from "@/lib/api";
+import { GRILL_POLL_INTERVAL_MS, grillRoutePath } from "@/lib/features/grill";
 import { featureStagePath } from "@/lib/features/stage";
 import { appRoute } from "@/lib/config";
 
 /**
  * Spec stage (ADR 015: `draft`, plus the "Spec" half of `spec_ready` before
- * the ADR is approved). Ports the live grill chat and the ADR edit/approve
- * workflow straight out of the old combined FeatureDetailClient — same
- * handlers, same API calls, now scoped to this route instead of one
- * conditional block among six. "Start build" moved to the Action Items
- * page (feature-action-items-client.tsx) since it's gated on action-item
- * resolution, not ADR content.
+ * the ADR is approved). Ports the ADR edit/approve workflow straight out of
+ * the old combined FeatureDetailClient — same handlers, same API calls, now
+ * scoped to this route instead of one conditional block among six. "Start
+ * build" moved to the Action Items page (feature-action-items-client.tsx)
+ * since it's gated on action-item resolution, not ADR content.
+ *
+ * The live grill chat no longer renders here: it has its own full-page route
+ * (yggdrasil-web#1, components/features/feature-grill-client.tsx), reached
+ * from the CTA below while the feature is `draft`. This page keeps the ADR
+ * workflow and the failed/cancelled banners.
  */
 export function FeatureSpecClient() {
   const { projectId, featureId, feature, setFeature } = useFeatureDetail();
@@ -28,10 +32,34 @@ export function FeatureSpecClient() {
   const [lastError, setLastError] = useState<string | null>(null);
 
   // Keep the draft textarea in sync with live updates from elsewhere (e.g.
-  // SpecGrillPanel's own polling populating adrMarkdown for the first time).
+  // the grill page's own polling populating adrMarkdown for the first time).
   useEffect(() => {
     setAdrDraft(feature.adrMarkdown ?? "");
   }, [feature.adrMarkdown]);
+
+  // The grill chat moved to its own route, which is what used to poll the
+  // feature here. This page still needs to notice the draft -> spec_ready
+  // flip that `submit_adr` causes, so the CTA is replaced by the ADR editor
+  // without a manual refresh — hence a feature-only poll while draft (no
+  // events: this page renders no transcript).
+  useEffect(() => {
+    if (feature.status !== "draft") return;
+    let active = true;
+    const interval = setInterval(() => {
+      fetchFeature(projectId, featureId)
+        .then((updated) => {
+          if (active) setFeature(updated);
+        })
+        .catch(() => {
+          // Transient poll failures are ignored: the next tick retries, and
+          // the last known state stays on screen.
+        });
+    }, GRILL_POLL_INTERVAL_MS);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [projectId, featureId, feature.status, setFeature]);
 
   // Surfaces the actual failure reason on the failed banner (jobs.last_error,
   // ADR 012) — only relevant here for a grill that failed before approval;
@@ -125,13 +153,30 @@ export function FeatureSpecClient() {
         </section>
       )}
 
-      {feature.status === "draft" && (
-        <SpecGrillPanel
-          projectId={projectId}
-          featureId={featureId}
-          feature={feature}
-          onFeatureChange={setFeature}
-        />
+      {feature.status === "draft" ? (
+        <section className="rounded-card border border-rime bg-surface-01 p-6">
+          <h2 className="text-base font-semibold text-frost">Spec grill in progress</h2>
+          <p className="mt-1 text-sm text-mist">
+            The grilling conversation has its own full-page chat, so a long transcript reads
+            top to bottom instead of scrolling inside a panel. Reply to the agent and watch
+            the ADR take shape there.
+          </p>
+          <Button className="mt-4" asChild>
+            <Link href={appRoute(grillRoutePath(projectId, featureId))}>
+              Open grill chat →
+            </Link>
+          </Button>
+        </section>
+      ) : (
+        // Once `submit_adr` has landed the feature is no longer `draft`, so
+        // the CTA into the (now finished) chat is replaced by a quiet link
+        // back to the read-only transcript.
+        <Link
+          href={appRoute(grillRoutePath(projectId, featureId))}
+          className="inline-block text-sm text-shadow hover:text-frost"
+        >
+          View grill transcript →
+        </Link>
       )}
 
       {error ? <p className="text-sm text-red-400">{error}</p> : null}

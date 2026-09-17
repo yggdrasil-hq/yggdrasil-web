@@ -8,6 +8,7 @@ import {
   featureStageProgress,
   type FeatureStageId,
 } from "@/lib/features/stage";
+import { grillRoutePath } from "@/lib/features/grill";
 import { appRoute } from "@/lib/config";
 import { cn } from "@/lib/utils";
 
@@ -28,6 +29,10 @@ interface FeatureStageTabsProps {
  */
 export function FeatureStageTabs({ projectId, featureId, currentStage }: FeatureStageTabsProps) {
   const pathname = usePathname();
+  // The grill chat is a detail view of the Spec stage, not a seventh stage,
+  // so the Spec tab stays the one marked "here" while it's open
+  // (yggdrasil-web#1).
+  const grillHref = appRoute(grillRoutePath(projectId, featureId));
 
   return (
     <nav
@@ -37,7 +42,7 @@ export function FeatureStageTabs({ projectId, featureId, currentStage }: Feature
       {FEATURE_STAGES.map((stage, index) => {
         const progress = featureStageProgress(stage.id, currentStage);
         const href = appRoute(featureStagePath(projectId, featureId, stage.id));
-        const isHere = pathname === href;
+        const isHere = pathname === href || (stage.id === "spec" && pathname === grillHref);
 
         return (
           <div key={stage.id} className="flex items-center gap-1">
