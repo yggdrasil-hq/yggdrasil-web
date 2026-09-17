@@ -830,3 +830,38 @@ export interface TestRunsResponse {
   testId: string;
   runs: TestRunHistoryEntry[];
 }
+
+// --- Screen recordings (ADR 029) ---
+
+/**
+ * How a run's recording should be presented, as decided by the API.
+ *
+ * Three states rather than a boolean, and the distinction is the point: a
+ * recording whose bytes were reclaimed by retention is a different fact from one
+ * that was never captured, and collapsing them is what makes an expired
+ * recording render as an empty player with no explanation.
+ */
+export type JobRecordingState = "available" | "expired";
+
+/**
+ * A run's recording metadata. Deliberately carries no bytes — the artifact is
+ * fetched from its own endpoint, so a run-history response never balloons to
+ * the size of the video it describes.
+ */
+export interface JobRecording {
+  jobId: string;
+  state: JobRecordingState;
+  contentType: string;
+  byteSize: number;
+  expiresAt: string;
+  purgedAt: string | null;
+  createdAt: string;
+}
+
+/**
+ * `recording: null` means this run was never recorded. That is a 200 with a
+ * null, not a 404, because it is an ordinary answer rather than an error.
+ */
+export interface JobRecordingResponse {
+  recording: JobRecording | null;
+}

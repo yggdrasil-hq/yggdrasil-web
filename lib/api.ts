@@ -16,6 +16,7 @@ import type {
   FeatureModelSecretMetadata,
   GithubAccessResponse,
   JobModelDefault,
+  JobRecordingResponse,
   ModelConfigInput,
   Notification,
   NotificationPreferenceEntry,
@@ -1408,4 +1409,47 @@ export async function fetchTestRun(
     { cache: "no-store", credentials: "include" },
   );
   return parseJson<TestRunHistoryEntry>(response);
+}
+
+/**
+ * ADR 029: a run's screen recording metadata, fetched lazily.
+ *
+ * Lazy rather than folded into the run-history response on purpose. A recording
+ * is orders of magnitude larger than everything else that list carries, and most
+ * runs are never recorded, so shipping metadata for 25 runs to render one
+ * expanded row would be paying for the exception on every page load. The user
+ * expanding a run is an explicit, infrequent action — that is the right moment
+ * to ask.
+ *
+ * A `recording: null` in the (200) response means "never recorded"; the API
+ * signals a *reclaimed* recording as a non-null recording whose state is
+ * "expired", so the two remain distinguishable here without any client-side
+ * inference from timestamps.
+ */
+export async function fetchJobRecording(
+  projectId: string,
+  jobId: string,
+): Promise<JobRecordingResponse> {
+  const response = await fetch(apiUrl(`/projects/${projectId}/jobs/${jobId}/recording`), {
+    cache: "no-store",
+    credentials: "include",
+  });
+  return parseJson<JobRecordingResponse>(response);
+}
+
+/**
+ * The recording's bytes URL, for a `<video src>`.
+ *
+ * Built from `apiUrl` rather than fetched, because a media element needs a URL
+ * to stream from — it cannot consume a fetched blob without buffering the whole
+ * artifact into memory first. Authorization rides on the session cookie exactly
+ * as every other API call's does (`credentials: "include"` governs fetch; for a
+ * `<video>` the cookie is sent because the API is same-site with the app).
+ *
+ * Served by the API behind that cookie, never from public storage: a recording
+ * can capture real application data on screen and real credentials as they are
+ * typed. See api/src/recordings/routes.ts.
+ */
+export function jobRecordingUrl(projectId: string, jobId: string): string {
+  return apiUrl(`/projects/${projectId}/jobs/${jobId}/recording/content`);
 }
