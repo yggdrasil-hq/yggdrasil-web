@@ -132,8 +132,11 @@ function renderStatus(
     return (
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <p className="text-sm text-emerald-300">
-          Deployed
-          {deploy.completedAt ? ` ${formatRelative(now - new Date(deploy.completedAt).getTime())}` : ""}.
+          {/* ADR 022: a rollback is a deployment operation too, but calling it
+              a "deploy" would hide that production went backwards. */}
+          {deploy.kind === "rollback" ? "Rolled back" : "Deployed"}
+          {deploy.completedAt ? ` ${formatRelative(now - new Date(deploy.completedAt).getTime())}` : ""}
+          {deploy.revision !== null ? ` (revision ${deploy.revision})` : ""}.
         </p>
         <a
           href={deploy.url}

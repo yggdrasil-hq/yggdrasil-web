@@ -139,3 +139,17 @@ describe("audit timestamps", () => {
     expect(formatAuditTimestamp("not-a-date")).toBe("not-a-date");
   });
 });
+
+// ADR 022 added the first `deploy.` action. Pinned here rather than left to the
+// generic unknown-action fallback, because an ungrouped action is invisible to
+// the filter dropdown — an admin could not filter for rollbacks at all.
+describe("deploy actions (ADR 022)", () => {
+  it("labels a deployment rollback", () => {
+    expect(actionLabel("deploy.rolled_back")).toBe("Deployment rolled back");
+  });
+
+  it("groups deploy actions under a Deployments filter", () => {
+    expect(actionGroupPrefix("deploy.rolled_back")).toBe("deploy.");
+    expect(AUDIT_ACTION_GROUPS).toContainEqual({ prefix: "deploy.", label: "Deployments" });
+  });
+});
