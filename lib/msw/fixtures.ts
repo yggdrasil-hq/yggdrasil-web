@@ -23,7 +23,9 @@ import type {
   Organization,
   Project,
   ProjectOverview,
+  ProjectPreviewsResponse,
   ProjectSecretMetadata,
+  JobPreview,
   RoleCapability,
   RolesResponse,
   TestingResults,
@@ -611,6 +613,40 @@ export function triggerMockDeploy(projectId: string): TriggerMockDeployResult {
   // place a mock deploy's revision is assigned.
   recordMockDeploy(projectId, "deploy", null);
   return "ok";
+}
+
+/**
+ * ADR 003 §15: mock preview deployments, so the deployments page's Preview row
+ * can be exercised without a real Orchestrator and a real cluster.
+ *
+ * Seeded with one live preview and one ended one, because the interesting part
+ * of the row is that only the live preview is linked — a fixture with a single
+ * active preview would never exercise the teardown path in the UI.
+ */
+export const mockProjectPreviews: Record<string, JobPreview[]> = {};
+
+export function getMockProjectPreviews(projectId: string): ProjectPreviewsResponse {
+  if (!mockProjectPreviews[projectId]) {
+    mockProjectPreviews[projectId] = [
+      {
+        jobId: "job_mock_preview_live",
+        host: "acme-web-app-feature-build-job1.preview.yggdrasil.local",
+        status: "active",
+        lastError: null,
+        createdAt: new Date(Date.now() - 4 * 60 * 1000).toISOString(),
+        tornDownAt: null,
+      },
+      {
+        jobId: "job_mock_preview_ended",
+        host: "acme-web-app-test-run-job0.preview.yggdrasil.local",
+        status: "torn_down",
+        lastError: null,
+        createdAt: new Date(Date.now() - 90 * 60 * 1000).toISOString(),
+        tornDownAt: new Date(Date.now() - 80 * 60 * 1000).toISOString(),
+      },
+    ];
+  }
+  return { previews: mockProjectPreviews[projectId] };
 }
 
 export const mockTests: Test[] = [

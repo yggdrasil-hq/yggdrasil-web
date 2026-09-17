@@ -31,6 +31,7 @@ import type {
   Project,
   ProjectJobModelOverride,
   ProjectOverview,
+  ProjectPreviewsResponse,
   ProjectSecretMetadata,
   ProviderType,
   RolesResponse,
@@ -1336,4 +1337,21 @@ export async function fetchProjectAnalytics(
     credentials: "include",
   });
   return parseJson<ProjectAnalyticsReport>(response);
+}
+
+/**
+ * ADR 003 §15: a project's ephemeral preview deployments — one per
+ * preview-eligible job that is currently running, plus recent ended ones.
+ *
+ * Read-only: previews are created and removed by the Orchestrator as its jobs
+ * run, so there is nothing a user can mutate here (and deliberately no manual
+ * teardown control — that would need its own authorization story for something
+ * the TTL sweep already handles).
+ */
+export async function fetchProjectPreviews(projectId: string): Promise<ProjectPreviewsResponse> {
+  const response = await fetch(apiUrl(`/projects/${projectId}/previews`), {
+    cache: "no-store",
+    credentials: "include",
+  });
+  return parseJson<ProjectPreviewsResponse>(response);
 }

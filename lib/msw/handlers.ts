@@ -34,6 +34,7 @@ import {
   getMockOrganizationSecrets,
   getMockOrganizations,
   getMockProject,
+  getMockProjectPreviews,
   getMockProjects,
   getMockSecrets,
   getMockTest,
@@ -166,6 +167,13 @@ export const handlers = [
 
   http.get(apiUrl("/projects/:projectId/deploy"), ({ params }) => {
     return HttpResponse.json(getMockDeployStatus(String(params.projectId)));
+  }),
+
+  // ADR 003 §15: the project's preview deployments. Read-only in the mock, like
+  // the real endpoint — previews are created and removed by the Orchestrator as
+  // jobs run, so there is no mock mutation to simulate here.
+  http.get(apiUrl("/projects/:projectId/previews"), ({ params }) => {
+    return HttpResponse.json(getMockProjectPreviews(String(params.projectId)));
   }),
 
   http.post(apiUrl("/projects/:projectId/deploy"), ({ params }) => {
