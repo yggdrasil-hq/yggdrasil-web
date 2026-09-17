@@ -1081,6 +1081,11 @@ export function getMockFeatureEvents(featureId: string): FeatureEventsResponse {
   return {
     jobStatus: mockJobStatuses[featureId] ?? null,
     lastError: mockLastErrors[featureId] ?? null,
+    // The mock feature the grill UI exercises is always a spec_grill session,
+    // and no mock path restarts one from a message (ADR 024) — so these two
+    // mirror an ordinary first-attempt grill run.
+    jobKind: "spec_grill",
+    restartedFromEventId: null,
     events: mockJobEvents[featureId] ?? [],
   };
 }

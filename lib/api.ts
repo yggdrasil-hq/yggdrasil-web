@@ -783,6 +783,28 @@ export async function retryFeatureGrill(projectId: string, featureId: string): P
   await parseJson<unknown>(response);
 }
 
+/**
+ * ADR 024: rewinds a feature's Spec interview to one transcript turn and
+ * re-runs it from there. The feature goes back to `draft` and a new spec_grill
+ * job is dispatched whose seed is the conversation before `eventId`.
+ */
+export async function restartFeatureFromMessage(
+  projectId: string,
+  featureId: string,
+  eventId: string,
+): Promise<Feature> {
+  const response = await fetch(
+    apiUrl(`/projects/${projectId}/features/${featureId}/restart-from-message`),
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ eventId }),
+    },
+  );
+  return parseJson<Feature>(response);
+}
+
 /** Re-dispatches feature_build for a feature whose build failed, keeping the already-approved ADR. */
 export async function retryFeatureBuild(projectId: string, featureId: string): Promise<void> {
   const response = await fetch(

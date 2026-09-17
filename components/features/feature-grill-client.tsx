@@ -10,6 +10,7 @@ import {
   cancelFeature,
   fetchFeature,
   fetchFeatureEvents,
+  restartFeatureFromMessage,
   retryFeatureGrill,
   sendFeatureMessage,
 } from "@/lib/api";
@@ -26,6 +27,12 @@ import {
   type GrillBubbleTone,
 } from "@/lib/features/grill";
 import { featureStagePath } from "@/lib/features/stage";
+import {
+  canRestartFromMessage,
+  isRestartableTurn,
+  restartConfirmCopy,
+  restartedNotice,
+} from "@/lib/features/grill-restart";
 import { appRoute } from "@/lib/config";
 import type { FeatureEvent, JobStatus } from "@/lib/features/types";
 import type { FeatureStatus } from "@/lib/features/statuses";
@@ -60,10 +67,14 @@ export function FeatureGrillClient() {
   const [events, setEvents] = useState<FeatureEvent[]>([]);
   const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
   const [lastError, setLastError] = useState<string | null>(null);
+  const [jobKind, setJobKind] = useState<string | null>(null);
+  const [restartedFrom, setRestartedFrom] = useState<string | null>(null);
   const [replyDraft, setReplyDraft] = useState("");
   const [sendingReply, setSendingReply] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  const [confirmingRestartAt, setConfirmingRestartAt] = useState<string | null>(null);
+  const [restartingAt, setRestartingAt] = useState<string | null>(null);
   const [polled, setPolled] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -81,6 +92,8 @@ export function FeatureGrillClient() {
         setEvents(eventsData.events);
         setJobStatus(eventsData.jobStatus);
         setLastError(eventsData.lastError);
+        setJobKind(eventsData.jobKind);
+        setRestartedFrom(eventsData.restartedFromEventId);
         setPolled(true);
       } catch {
         // Transient poll failures are ignored: the next tick retries, and
@@ -147,6 +160,27 @@ export function FeatureGrillClient() {
     }
   }
 
+  /**
+   * ADR 024: rewind to the chosen turn. Only ever called from the confirm step
+   * (the control asks first), because this discards every turn after the chosen
+   * message and, with it, whatever the run concluded.
+   */
+  async function handleRestartFrom(eventId: string) {
+    setRestartingAt(eventId);
+    setActionError(null);
+    try {
+      const updated = await restartFeatureFromMessage(projectId, featureId, eventId);
+      setFeature(updated);
+    } catch (error) {
+      setActionError(
+        error instanceof Error ? error.message : "Failed to restart the grill from that message",
+      );
+    } finally {
+      setRestartingAt(null);
+      setConfirmingRestartAt(null);
+    }
+  }
+
   const live = isGrillLive(feature);
   const stoppedMessage = grillStoppedMessage(jobStatus, lastError);
   const placeholder = live
@@ -154,6 +188,15 @@ export function FeatureGrillClient() {
     : events.length === 0
       ? "No transcript was recorded for this session."
       : null;
+  // ADR 024. Gated on exactly what the API accepts, so the control never
+  // offers something that would come back a 409.
+  const restartable = canRestartFromMessage({
+    status: feature.status,
+    jobKind,
+    jobStatus,
+    hasTranscript: events.length > 0,
+  });
+  const rewoundNotice = restartedNotice(restartedFrom);
 
   return (
     <div className="space-y-6">
@@ -206,8 +249,25 @@ export function FeatureGrillClient() {
             transcript scrolls with the page (yggdrasil-web#1). */}
         <div className="mt-4 space-y-3">
           {placeholder ? <p className="text-sm text-shadow">{placeholder}</p> : null}
+          {rewoundNotice ? (
+            <p className="rounded-md border border-rime-soft bg-surface-02 p-2 text-xs text-mist">
+              {rewoundNotice}
+            </p>
+          ) : null}
           {events.map((event) => (
-            <GrillEvent key={event.id} event={event} />
+            <div key={event.id} className="space-y-1">
+              <GrillEvent event={event} />
+              {restartable && isRestartableTurn(event) ? (
+                <TurnRestartControl
+                  confirming={confirmingRestartAt === event.id}
+                  busy={restartingAt === event.id}
+                  isAdrApproved={feature.adrApproved}
+                  onAsk={() => setConfirmingRestartAt(event.id)}
+                  onCancel={() => setConfirmingRestartAt(null)}
+                  onConfirm={() => void handleRestartFrom(event.id)}
+                />
+              ) : null}
+            </div>
           ))}
           {isGrillProcessing({ awaitingUserInput: feature.awaitingUserInput, jobStatus }) ? (
             <ProcessingBubble />
@@ -269,6 +329,66 @@ function GrillEvent({ event }: { event: FeatureEvent }) {
   const bubble = grillBubbleFor(event);
   if (!bubble) return null;
   return <GrillBubble label={bubble.label} tone={bubble.tone} content={bubble.content} />;
+}
+
+/**
+ * ADR 024's per-turn "restart from here" control.
+ *
+ * Two steps on purpose. Rewinding is destructive and irreversible from the
+ * user's side — every turn after this one is discarded, along with whatever
+ * the run concluded — so the first click only opens an explanation of what is
+ * about to be lost; nothing is sent until the second.
+ *
+ * The control is rendered only where the API would accept it (see
+ * lib/features/grill-restart.ts), which is a deliberate narrowing of the
+ * `design/` wireframe: that mock shows "Resume from here" / "Restart from
+ * here" on every turn unconditionally. "Resume from here" is not built at all
+ * (ADR 024 scopes it out), and a rewind is not offered on a turn the API would
+ * reject or on a feature that has moved past Spec.
+ */
+function TurnRestartControl({
+  confirming,
+  busy,
+  isAdrApproved,
+  onAsk,
+  onCancel,
+  onConfirm,
+}: {
+  confirming: boolean;
+  busy: boolean;
+  isAdrApproved: boolean;
+  onAsk: () => void;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  if (!confirming) {
+    return (
+      <div className="ml-1 flex justify-start">
+        <button
+          type="button"
+          onClick={onAsk}
+          className="text-xs text-shadow underline-offset-2 hover:text-frost hover:underline"
+          title="Discard the conversation after this message and re-run the grill from here"
+        >
+          ↺ Restart from here
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="ml-1 rounded-md border border-rime-soft bg-surface-02 p-3">
+      <p className="text-xs text-mist">{restartConfirmCopy({ isAdrApproved })}</p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        <Button size="sm" variant="outline" disabled={busy} onClick={onConfirm}>
+          {busy ? "Restarting…" : "Yes, restart from here"}
+        </Button>
+        <Button size="sm" variant="ghost" disabled={busy} onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 function GrillBubble({

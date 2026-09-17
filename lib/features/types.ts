@@ -215,6 +215,17 @@ export interface DesignEventsResponse {
 export interface FeatureEventsResponse {
   jobStatus: JobStatus | null;
   lastError: string | null;
+  /**
+   * Which job kind produced these events (ADR 024). The grill page needs it to
+   * tell a grill transcript from a failed build's, since the per-message
+   * restart control only applies to the former.
+   */
+  jobKind: string | null;
+  /**
+   * The transcript turn this run's seed was rewound to, when the run came from
+   * a per-message "restart from here" (ADR 024). Null for an ordinary run.
+   */
+  restartedFromEventId: string | null;
   events: FeatureEvent[];
 }
 
