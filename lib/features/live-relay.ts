@@ -138,12 +138,40 @@ export function jobEventFromFrame(frame: LiveFrame): FeatureEvent | null {
   return event as FeatureEvent;
 }
 
+/**
+ * The frame carrying one streaming chunk of assistant text (ADR 019 item 13).
+ * Reserved in the protocol from the start; the client ignores unknown frames, so
+ * a server that predates it simply never sends one.
+ */
+export const LIVE_DELTA_FRAME_TYPE = "job_event_delta";
+
+/**
+ * The text a delta frame carries, or null.
+ *
+ * Mirrors `jobEventFromFrame`: casts rather than deep-validating, because the
+ * frame comes from the API over an already-authenticated socket and is treated
+ * exactly as trustingly as the REST payload it approximates.
+ */
+export function deltaTextFromFrame(frame: LiveFrame): string | null {
+  if (frame.type !== LIVE_DELTA_FRAME_TYPE) return null;
+  const text = frame.text;
+  return typeof text === "string" && text !== "" ? text : null;
+}
+
 export interface LiveRelayDeps {
   url: string;
   projectId: string;
   featureId: string;
   /** A `job_event` arrived for this feature. */
   onEvent: () => void;
+  /**
+   * One streaming chunk of assistant text arrived (ADR 019 item 13).
+   *
+   * Optional because the caller may have nothing to stream into — the relay is
+   * still useful without deltas, and a deployment with them switched off simply
+   * never fires this.
+   */
+  onDelta?: (text: string) => void;
   onStatusChange?: (status: LiveRelayStatus) => void;
   socketFactory?: (url: string) => LiveSocket;
   schedule?: (run: () => void, delayMs: number) => unknown;
@@ -262,6 +290,16 @@ export function createLiveRelay(deps: LiveRelayDeps): LiveRelay {
         stop();
         return;
       }
+
+      // Deltas are checked before stored events, though the two frame types are
+      // disjoint: keeping the provisional path first makes it obvious in the
+      // read order that a delta is never a state change, only text.
+      const delta = deltaTextFromFrame(frame);
+      if (delta !== null) {
+        deps.onDelta?.(delta);
+        return;
+      }
+
       if (jobEventFromFrame(frame)) deps.onEvent();
     };
 

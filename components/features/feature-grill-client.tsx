@@ -33,6 +33,10 @@ import {
   restartConfirmCopy,
   restartedNotice,
 } from "@/lib/features/grill-restart";
+import {
+  countAgentTextEvents,
+  shouldDropStreamBuffer,
+} from "@/lib/features/grill-stream";
 import { apiBaseUrl, appRoute } from "@/lib/config";
 import {
   createLiveRelay,
@@ -41,8 +45,7 @@ import {
   liveSocketUrl,
   type LiveRelayStatus,
 } from "@/lib/features/live-relay";
-import type { FeatureEvent, JobStatus } from "@/lib/features/types";
-import type { FeatureStatus } from "@/lib/features/statuses";
+import type { FeatureEvent, JobStatus } from "@/lib/features/types";import type { FeatureStatus } from "@/lib/features/statuses";
 
 /**
  * Full-page `spec_grill` chat (yggdrasil-web#1), reached from the Spec stage
@@ -93,6 +96,18 @@ export function FeatureGrillClient() {
   const [polled, setPolled] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [liveStatus, setLiveStatus] = useState<LiveRelayStatus>("off");
+  /**
+   * Streaming assistant text that has arrived over the relay but is not yet in
+   * the transcript (ADR 019 item 13).
+   *
+   * Provisional by definition — the deltas for one message concatenate to exactly
+   * the text the authoritative `agent_text` event carries at `message_end` — so
+   * lib/features/grill-stream.ts decides when it is superseded and this state is
+   * only ever what that decision leaves behind.
+   */
+  const [streamingText, setStreamingText] = useState("");
+  /** `agent_text` count at the last successful read, for the supersede rule. */
+  const agentTextCountRef = useRef(0);
 
   // Flips on unmount so an in-flight poll (or a relay frame that lands just as
   // the page is left) cannot setState after teardown.
@@ -111,6 +126,19 @@ export function FeatureGrillClient() {
         fetchFeatureEvents(projectId, featureId),
       ]);
       if (!mountedRef.current) return;
+      // The buffer's supersede rules live in lib/features/grill-stream.ts so they
+      // are unit-testable; see that module for why each one is needed.
+      const agentTextCount = countAgentTextEvents(eventsData.events);
+      if (
+        shouldDropStreamBuffer({
+          previousAgentTextCount: agentTextCountRef.current,
+          agentTextCount,
+          jobStatus: eventsData.jobStatus,
+        })
+      ) {
+        setStreamingText("");
+      }
+      agentTextCountRef.current = agentTextCount;
       setFeature(featureData);
       setEvents(eventsData.events);
       setJobStatus(eventsData.jobStatus);
@@ -153,6 +181,7 @@ export function FeatureGrillClient() {
       projectId,
       featureId,
       onEvent: () => refresh.trigger(),
+      onDelta: (text) => setStreamingText((previous) => previous + text),
       onStatusChange: setLiveStatus,
     });
 
@@ -200,6 +229,8 @@ export function FeatureGrillClient() {
       setEvents([]);
       setJobStatus(null);
       setLastError(null);
+      setStreamingText("");
+      agentTextCountRef.current = 0;
     } catch (error) {
       setActionError(
         error instanceof Error ? error.message : "Failed to retry grill session",
@@ -246,6 +277,11 @@ export function FeatureGrillClient() {
     hasTranscript: events.length > 0,
   });
   const rewoundNotice = restartedNotice(restartedFrom);
+
+  const processing = isGrillProcessing({
+    awaitingUserInput: feature.awaitingUserInput,
+    jobStatus,
+  });
 
   return (
     <div className="space-y-6">
@@ -318,7 +354,13 @@ export function FeatureGrillClient() {
               ) : null}
             </div>
           ))}
-          {isGrillProcessing({ awaitingUserInput: feature.awaitingUserInput, jobStatus }) ? (
+          {processing && streamingText ? (
+            // The growing bubble: the model's own words as they arrive. It is
+            // replaced, not appended to, the moment the finished message is
+            // persisted (see the supersede rule in `poll`), so the transcript
+            // never shows the same text twice.
+            <GrillBubble label="Agent" tone="default" content={streamingText} />
+          ) : processing ? (
             <ProcessingBubble />
           ) : null}
         </div>

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   LIVE_APP_CLOSE_PROTOCOL,
   LIVE_APP_CLOSE_UNAUTHORIZED,
+  LIVE_DELTA_FRAME_TYPE,
   LIVE_MAX_RECONNECT_ATTEMPTS,
   LIVE_RECONNECT_BASE_MS,
   LIVE_RECONNECT_MAX_MS,
@@ -9,6 +10,7 @@ import {
   liveSocketUrl,
   createLiveRelay,
   createRefreshCoalescer,
+  deltaTextFromFrame,
   jobEventFromFrame,
   parseLiveFrame,
   reconnectDelayMs,
@@ -66,12 +68,14 @@ function buildRelay(options: { maxAttempts?: number } = {}) {
   const scheduler = makeScheduler();
   const statuses: string[] = [];
   const onEvent = vi.fn();
+  const onDelta = vi.fn();
 
   const relay = createLiveRelay({
     url: "ws://api.test/api/ws",
     projectId: PROJECT_ID,
     featureId: FEATURE_ID,
     onEvent,
+    onDelta,
     onStatusChange: (status) => statuses.push(status),
     socketFactory: () => {
       const socket = makeSocket();
@@ -83,7 +87,15 @@ function buildRelay(options: { maxAttempts?: number } = {}) {
     maxAttempts: options.maxAttempts ?? 3,
   });
 
-  return { relay, sockets, scheduler, statuses, onEvent, socket: () => sockets[sockets.length - 1] };
+  return {
+    relay,
+    sockets,
+    scheduler,
+    statuses,
+    onEvent,
+    onDelta,
+    socket: () => sockets[sockets.length - 1],
+  };
 }
 
 function subscribeFrame(): string {
@@ -97,6 +109,17 @@ function jobEventMessage() {
       featureId: FEATURE_ID,
       jobId: "job_1",
       event: { id: "event_1", type: "agent_text", message: "hi", createdAt: "2026-09-18T10:00:00.000Z" },
+    }),
+  };
+}
+
+function deltaMessage(text: string) {
+  return {
+    data: JSON.stringify({
+      type: LIVE_DELTA_FRAME_TYPE,
+      featureId: FEATURE_ID,
+      jobId: "job_1",
+      text,
     }),
   };
 }
@@ -219,6 +242,116 @@ describe("createRefreshCoalescer", () => {
     coalescer.cancel();
     scheduler.run(0);
     expect(run).not.toHaveBeenCalled();
+  });
+});
+
+describe("deltaTextFromFrame", () => {
+  it("returns the text of a delta frame", () => {
+    expect(
+      deltaTextFromFrame({ type: LIVE_DELTA_FRAME_TYPE, featureId: FEATURE_ID, jobId: "job_1", text: "Hello " }),
+    ).toBe("Hello ");
+  });
+
+  it("preserves whitespace, since the client concatenates", () => {
+    // A chunk is often a single space or a newline; trimming here would corrupt
+    // the streamed text in a way no later event could repair.
+    expect(deltaTextFromFrame({ type: LIVE_DELTA_FRAME_TYPE, text: " " })).toBe(" ");
+    expect(deltaTextFromFrame({ type: LIVE_DELTA_FRAME_TYPE, text: "\n\n" })).toBe("\n\n");
+  });
+
+  it("returns null for other frames, a missing text, and an empty text", () => {
+    expect(deltaTextFromFrame({ type: "job_event" })).toBeNull();
+    expect(deltaTextFromFrame({ type: "pong" })).toBeNull();
+    expect(deltaTextFromFrame({ type: LIVE_DELTA_FRAME_TYPE })).toBeNull();
+    expect(deltaTextFromFrame({ type: LIVE_DELTA_FRAME_TYPE, text: "" })).toBeNull();
+    expect(deltaTextFromFrame({ type: LIVE_DELTA_FRAME_TYPE, text: 42 })).toBeNull();
+  });
+
+  it("does not confuse a delta with a stored event", () => {
+    // The two are disjoint, and the client acts differently on each: one appends
+    // text, the other re-reads. Mistaking one for the other would either drop
+    // the stream or trigger a request per chunk.
+    expect(jobEventFromFrame({ type: LIVE_DELTA_FRAME_TYPE, text: "x" })).toBeNull();
+    expect(deltaTextFromFrame({ type: "job_event", event: {} })).toBeNull();
+  });
+});
+
+describe("createLiveRelay: deltas", () => {
+  it("signals each delta's text in order", () => {
+    const { socket, onDelta } = buildRelay();
+    socket().onopen?.();
+
+    for (const text of ["Drafting ", "the ", "ADR."]) {
+      socket().onmessage?.(deltaMessage(text));
+    }
+
+    expect(onDelta.mock.calls.map((call) => call[0])).toEqual(["Drafting ", "the ", "ADR."]);
+  });
+
+  it("does not trigger a re-read for a delta", () => {
+    // A delta is text, not a state change: a re-read per chunk would issue as
+    // many requests as the polling this replaced. onEvent is what drives the
+    // coalesced refresh, and it must stay quiet here.
+    const { socket, onEvent, onDelta } = buildRelay();
+    socket().onopen?.();
+
+    socket().onmessage?.(deltaMessage("chunk"));
+
+    expect(onDelta).toHaveBeenCalledTimes(1);
+    expect(onEvent).not.toHaveBeenCalled();
+  });
+
+  it("still signals stored events, so a finished message re-reads", () => {
+    // The counterpart: the authoritative agent_text must still drive the refresh
+    // that replaces the accumulated buffer.
+    const { socket, onEvent, onDelta } = buildRelay();
+    socket().onopen?.();
+
+    socket().onmessage?.(jobEventMessage());
+
+    expect(onEvent).toHaveBeenCalledTimes(1);
+    expect(onDelta).not.toHaveBeenCalled();
+  });
+
+  it("forwards a delta arriving before the subscribed ack", () => {
+    // Deliberately not gated on the connection being `live`. The server only
+    // publishes to sockets it has accepted for this feature, so a pre-ack delta
+    // cannot happen in practice — and if it did, the text belongs to the very
+    // feature this relay is scoped to, so forwarding it is preferable to
+    // dropping it. Gating here would add a state check that buys nothing.
+    const { socket, onDelta } = buildRelay();
+    socket().onmessage?.(deltaMessage("early"));
+
+    expect(onDelta).toHaveBeenCalledTimes(1);
+  });
+
+  it("works with no onDelta configured", () => {
+    // The callback is optional: a caller that does not stream text must not have
+    // to pass a stub, and a delta must not throw.
+    const socket = makeSocket();
+    const relay = createLiveRelay({
+      url: "ws://api.test/api/ws",
+      projectId: PROJECT_ID,
+      featureId: FEATURE_ID,
+      onEvent: vi.fn(),
+      socketFactory: () => socket,
+      schedule: () => 0,
+      cancel: () => {},
+    });
+
+    socket.onopen?.();
+    expect(() => socket.onmessage?.(deltaMessage("x"))).not.toThrow();
+    relay.stop();
+  });
+
+  it("stops signalling deltas after stop", () => {
+    const { relay, socket, onDelta } = buildRelay();
+    socket().onopen?.();
+    relay.stop();
+
+    socket().onmessage?.(deltaMessage("late"));
+
+    expect(onDelta).not.toHaveBeenCalled();
   });
 });
 
