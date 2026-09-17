@@ -14,6 +14,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { NotificationPreferencesSettings } from "@/components/settings/notification-preferences-settings";
 import { logout, updateDisplayName } from "@/lib/auth/api";
 import { AuthApiError } from "@/lib/auth/types";
 import { appRoute } from "@/lib/config";
@@ -107,6 +108,8 @@ export function AccountSettingsClient() {
             </CardDescription>
           </CardHeader>
         </Card>
+
+        <NotificationPreferencesSettings />
 
         <p className="text-sm text-mist">
           <Link href={appRoute("/projects")} className="text-primary hover:underline">

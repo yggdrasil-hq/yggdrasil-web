@@ -44,6 +44,7 @@ import {
   type ProjectDeletionBlocker,
 } from "@/lib/api";
 import { ModelSecretField } from "@/components/settings/model-secret-field";
+import { ProjectNotificationMuteCard } from "@/components/settings/project-notification-mute";
 import { appRoute } from "@/lib/config";
 import { AGENT_JOB_KINDS, AGENT_JOB_KIND_LABELS } from "@/lib/features/types";
 import type {
@@ -624,6 +625,11 @@ export function ProjectSettingsClient({ projectId }: ProjectSettingsClientProps)
               </div>
             </Card>
           ) : null}
+
+          <ProjectNotificationMuteCard
+            projectId={projectId}
+            organizationId={project.organizationId}
+          />
 
           <Card className="border-dashed">
             <CardHeader>

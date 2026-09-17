@@ -14,6 +14,8 @@ import type {
   JobModelDefault,
   ModelConfigInput,
   Notification,
+  NotificationPreferenceEntry,
+  NotificationPreferencesResponse,
   NotificationsResponse,
   OrgClusterMetadata,
   Organization,
@@ -811,6 +813,57 @@ export async function markAllNotificationsRead(): Promise<void> {
   if (!response.ok) {
     throw new Error(`API error: ${response.status}`);
   }
+}
+
+/**
+ * The caller's notification preferences for one organization (ADR 027).
+ *
+ * These are personal settings keyed by organization, not organization
+ * settings: the route is under `/settings` and any member may read their own.
+ */
+export async function fetchNotificationPreferences(
+  organizationId: string,
+): Promise<NotificationPreferencesResponse> {
+  const response = await fetch(
+    apiUrl(`/settings/notification-preferences?org=${organizationId}`),
+    { cache: "no-store", credentials: "include" },
+  );
+  return parseJson<NotificationPreferencesResponse>(response);
+}
+
+/**
+ * Sets one preference row. `kind: null` writes the organization-wide row that
+ * every kind without a row of its own inherits.
+ */
+export async function setNotificationPreference(input: {
+  organizationId: string;
+  kind: string | null;
+  enabled: boolean;
+}): Promise<NotificationPreferenceEntry> {
+  const response = await fetch(apiUrl("/settings/notification-preferences"), {
+    method: "PUT",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return parseJson<NotificationPreferenceEntry>(response);
+}
+
+/** Mutes or unmutes one project's notifications for the caller. */
+export async function setProjectNotificationMute(
+  projectId: string,
+  muted: boolean,
+): Promise<{ projectId: string; muted: boolean }> {
+  const response = await fetch(
+    apiUrl(`/settings/notification-preferences/projects/${projectId}`),
+    {
+      method: "PUT",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ muted }),
+    },
+  );
+  return parseJson<{ projectId: string; muted: boolean }>(response);
 }
 
 // --- Organization / RBAC (ADR 016) ---

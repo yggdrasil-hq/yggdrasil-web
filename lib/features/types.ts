@@ -350,6 +350,26 @@ export interface NotificationsResponse {
   unreadCount: number;
 }
 
+/**
+ * One row of the notification-preferences settings (ADR 027). `kind: null` is
+ * the organization-wide "all project activity" row. `enabled` is the
+ * *effective* state the API resolved — a kind with no row of its own inherits
+ * the org-wide row, so this is not necessarily a stored value.
+ */
+export interface NotificationPreferenceEntry {
+  kind: string | null;
+  label: string;
+  description: string | null;
+  enabled: boolean;
+}
+
+export interface NotificationPreferencesResponse {
+  organizationId: string;
+  preferences: NotificationPreferenceEntry[];
+  /** Project ids this user has muted, across every organization. */
+  mutedProjectIds: string[];
+}
+
 // --- Organization / RBAC (ADR 016) ---
 
 export type OrgStatus = "pending_cluster" | "ready";
