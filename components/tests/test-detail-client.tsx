@@ -5,6 +5,7 @@ import { formatDistanceToNow } from "date-fns";
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/app-shell/app-shell";
 import { TestForm } from "@/components/tests/test-form";
+import { TestRunHistory } from "@/components/tests/test-run-history";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -126,8 +127,8 @@ export function TestDetailClient({ projectId, testId }: TestDetailClientProps) {
               </CardDescription>
               <CardDescription>
                 {test.lastRunAt
-                  ? `Last run ${formatDistanceToNow(new Date(test.lastRunAt), { addSuffix: true })}`
-                  : "No runs yet — scheduled runs will start once the Orchestrator is connected."}
+                  ? `Schedule last fired ${formatDistanceToNow(new Date(test.lastRunAt), { addSuffix: true })}`
+                  : "No scheduled run yet — the next scheduled window will dispatch one."}
               </CardDescription>
             </CardHeader>
           </Card>
@@ -146,6 +147,16 @@ export function TestDetailClient({ projectId, testId }: TestDetailClientProps) {
           />
 
           {saved ? <p className="text-sm text-emerald-300">Changes saved.</p> : null}
+
+          {/* ADR 026 (issue #16): the standalone Testing product's run history —
+              what this test has actually done over time, as distinct from ADR
+              015's per-feature Testing tab, which is about one feature branch. */}
+          <TestRunHistory
+            projectId={projectId}
+            testId={testId}
+            testEnabled={test.enabled}
+            refreshKey={test.updatedAt}
+          />
         </div>
       </main>
     </AppShell>

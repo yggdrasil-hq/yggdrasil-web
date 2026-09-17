@@ -1,8 +1,12 @@
 export const TEST_SCHEDULE_PRESETS = {
   hourly: { cron: "0 * * * *", label: "Every hour" },
   every6Hours: { cron: "0 */6 * * *", label: "Every 6 hours" },
-  daily9am: { cron: "0 9 * * *", label: "Daily at 9:00 AM" },
-  weeklyMonday9am: { cron: "0 9 * * 1", label: "Weekly on Monday at 9:00 AM" },
+  // ADR 026: schedules are evaluated in UTC (there is no per-project timezone
+  // concept), so the clock-time presets name UTC explicitly. Leaving them as
+  // a bare "9:00 AM" would read as the viewer's local time and quietly promise
+  // a run three or four hours away from when it actually happens.
+  daily9am: { cron: "0 9 * * *", label: "Daily at 09:00 UTC" },
+  weeklyMonday9am: { cron: "0 9 * * 1", label: "Weekly on Monday at 09:00 UTC" },
 } as const;
 
 export type TestSchedulePresetId = keyof typeof TEST_SCHEDULE_PRESETS | "custom";
