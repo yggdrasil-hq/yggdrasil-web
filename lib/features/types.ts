@@ -325,6 +325,20 @@ export interface ModelConfigInput {
   modelId: string;
 }
 
+/**
+ * Whether a set of project secrets contains a complete model-config bundle.
+ *
+ * **A mirror of a rule the API enforces** (ADR 007 item 4, and ADR 018's
+ * all-or-nothing rule at each tier): the three keys travel together or not at
+ * all. The API is authoritative — this exists so the mock layer can decide what a
+ * resolution would return without a second, drifting copy of the rule.
+ *
+ * It had no caller and read as dead code (issue #66). It was not dead but
+ * *duplicated*: `lib/msw/fixtures.ts` had an identical `hasFullModelBundle` doing
+ * its own check with its own copy of the key list. That is the worse of the two
+ * states, because two copies of a rule agree until one of them is updated — so
+ * the fix was to keep this one and have the fixture call it, not to delete it.
+ */
 export function hasFullModelConfigBundle(secrets: ProjectSecretMetadata[]): boolean {
   const keys: ModelSecretKey[] = ["MODEL_BASE_URL", "MODEL_API_KEY", "MODEL_ID"];
   return keys.every((key) => secrets.some((secret) => secret.key === key));
@@ -705,10 +719,6 @@ export interface AgenticReview {
   verdict: AgenticReviewVerdict | null;
   comment: string | null;
   findings: AgenticReviewFinding[];
-}
-
-export function emptyAgenticReview(featureId: string): AgenticReview {
-  return { featureId, verdict: null, comment: null, findings: [] };
 }
 
 // --- Usage / analytics reporting (ADR 023) ---

@@ -125,16 +125,71 @@ export interface DraftFile {
 const ALLOWED_SUFFIXES = [".ts", ".js", ".json"];
 
 /**
+ * The API's upload limits, mirrored for immediate feedback (ADR 025).
+ *
+ * **The API is the authority**; these are copies, because the Web app cannot
+ * import from `api/`. They live here rather than being inlined at each check so
+ * there is one place to correct when the API's change — and so a diverging pair
+ * is visible rather than buried. Source of truth:
+ * `api/src/extensions/bundle.ts` → `EXTENSION_LIMITS`.
+ *
+ * They are mirrored *now* because they were previously absent from the client
+ * entirely: an over-limit bundle was accepted by the form and rejected by the API
+ * at the very end of the flow, as a `400`, after the upload had been authored and
+ * a risk acknowledgement ticked. `fileTooLarge` was written for exactly this and
+ * had no caller (issue #66).
+ */
+export const EXTENSION_UPLOAD_LIMITS = {
+  /** Files in one extension. */
+  maxFiles: 16,
+  /** One file, measured in UTF-8 bytes. */
+  maxFileBytes: 64 * 1024,
+  /** The whole bundle, in UTF-8 bytes. */
+  maxTotalBytes: 96 * 1024,
+};
+
+/**
+ * A draft file's size in UTF-8 bytes — the measure the API enforces.
+ *
+ * Bytes rather than `content.length`, which counts UTF-16 code units: a bundle of
+ * non-ASCII text would pass a client check based on that and still be rejected by
+ * the API. The two agree only for ASCII, which is exactly the case a developer
+ * tests with.
+ */
+export function fileBytes(file: DraftFile | OrgExtensionFile): number {
+  return new TextEncoder().encode(file.content).length;
+}
+
+/** True when a file's content is too large for the API to accept. */
+export function fileTooLarge(
+  file: OrgExtensionFile | DraftFile,
+  maxBytes = EXTENSION_UPLOAD_LIMITS.maxFileBytes,
+): boolean {
+  return fileBytes(file) > maxBytes;
+}
+
+/**
  * Client-side pre-check so the form can disable submission and explain why,
  * mirroring the API's rules (ADR 025).
  *
  * The API is still the authority — this cannot be trusted as a control, only as
- * feedback — and it deliberately covers the *shape* rules (a missing entry
- * file, a path that would never be accepted) rather than trying to reimplement
- * the whole validator in the browser.
+ * feedback. It covers the *shape* rules (a missing entry file, a path that would
+ * never be accepted) and, since issue #66, the API's three **size** limits.
+ *
+ * The size limits were the omission worth noting: `fileTooLarge` was written for
+ * this purpose and had no caller, so an over-limit bundle passed the form and was
+ * rejected by the API at the very end — as a bare `400`, after the author had
+ * written the files and ticked the risk acknowledgement. The client already had
+ * every other rule, so the gap read as "accepted" right up to the point it didn't.
+ *
+ * The order matters for the message a user sees: path shape first, because a
+ * malformed path is a mistake to fix rather than a limit to respect, then sizes.
  */
 export function draftBundleIssue(files: DraftFile[], entryPath: string): string | null {
   if (files.length === 0) return "Add at least one file.";
+  if (files.length > EXTENSION_UPLOAD_LIMITS.maxFiles) {
+    return `An extension can have at most ${EXTENSION_UPLOAD_LIMITS.maxFiles} files (this one has ${files.length}).`;
+  }
   for (const file of files) {
     const path = file.path.trim();
     if (!path) return "Every file needs a path.";
@@ -146,6 +201,13 @@ export function draftBundleIssue(files: DraftFile[], entryPath: string): string 
     if (!ALLOWED_SUFFIXES.some((suffix) => path.toLowerCase().endsWith(suffix))) {
       return `"${path}" must end with .ts, .js or .json.`;
     }
+    if (fileTooLarge(file)) {
+      return `"${path}" is ${formatBytes(fileBytes(file))}, over the ${formatBytes(EXTENSION_UPLOAD_LIMITS.maxFileBytes)} limit for one file.`;
+    }
+  }
+  const total = files.reduce((sum, file) => sum + fileBytes(file), 0);
+  if (total > EXTENSION_UPLOAD_LIMITS.maxTotalBytes) {
+    return `The bundle is ${formatBytes(total)}, over the ${formatBytes(EXTENSION_UPLOAD_LIMITS.maxTotalBytes)} limit. Remove a file or shorten one.`;
   }
   if (!files.some((file) => file.path.trim() === entryPath.trim())) {
     return `The entry path "${entryPath}" is not one of the files.`;
@@ -191,7 +253,3 @@ export function projectLoadState(
   };
 }
 
-/** True when a file's content is too large for the API to accept. */
-export function fileTooLarge(file: OrgExtensionFile | DraftFile, maxBytes = 64 * 1024): boolean {
-  return new TextEncoder().encode(file.content).length > maxBytes;
-}

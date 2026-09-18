@@ -38,7 +38,27 @@ export const FEATURE_STATUS_ORDER = FEATURE_STATUSES.map((s) => s.id);
 
 export type FeatureBucket = "planned" | "inProgress" | "completed";
 
-export function getFeatureBucket(status: FeatureStatus): FeatureBucket {
+/**
+ * Which home-page bucket a feature status belongs to, or null for a status this
+ * version does not know.
+ *
+ * **Mirrors the API's implementation** (`api/src/projects/types.ts`), which is
+ * authoritative because it is what computes the counts the home page renders.
+ * That matters more than it looks: this function previously fell through to
+ * `"completed"` for an unrecognised status while the API returned null and the
+ * MSW fixture incremented `inProgress` — three spellings of one rule that agree
+ * on today's eleven statuses and disagree on the twelfth. Since a new status is
+ * added by editing an enum, "silently wrong bucket until someone notices" is the
+ * default outcome of leaving them unaligned.
+ *
+ * Null rather than a bucket for an unknown status, matching the API: guessing
+ * puts a feature in a section nobody looks at, and not counting it is the honest
+ * answer to "which bucket is this".
+ *
+ * It has one real caller — the MSW fixture's overview counts — which previously
+ * reimplemented this mapping inline (issue #66).
+ */
+export function getFeatureBucket(status: FeatureStatus): FeatureBucket | null {
   if (status === "draft" || status === "spec_ready") return "planned";
   if (
     status === "queued" ||
@@ -51,7 +71,8 @@ export function getFeatureBucket(status: FeatureStatus): FeatureBucket {
   ) {
     return "inProgress";
   }
-  return "completed";
+  if (status === "merged" || status === "cancelled") return "completed";
+  return null;
 }
 
 export function getStatusMeta(status: FeatureStatus): FeatureStatusMeta {
