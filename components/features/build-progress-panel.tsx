@@ -76,10 +76,31 @@ export function BuildProgressPanel({
   const startedEvent = events.find((event) => event.type === "run_started");
   const startedAt = startedEvent ? new Date(startedEvent.createdAt).getTime() : null;
   const elapsedLabel = startedAt ? formatElapsed(now - startedAt) : null;
+  /*
+   * Issue #27: this build's entrypoint resolved conflicts between the feature
+   * branch and its base before the agent started. Surfaced prominently rather
+   * than in a log line, because a conflict resolution is the highest-risk part
+   * of a build's diff — it is where the agent guessed at how two changes should
+   * coexist — and nothing in the product said it had happened at all.
+   */
+  const conflictEvent = events.find((event) => event.type === "merge_conflicts");
 
   return (
     <section className="rounded-card border border-rime bg-surface-01 p-6">
       <h2 className="text-base font-semibold text-frost">Build in progress</h2>
+
+      {conflictEvent?.message ? (
+        <div className="mt-4 rounded-md border border-status-input/40 bg-status-input/10 px-4 py-3">
+          <p className="text-sm font-medium text-frost">
+            This build resolved merge conflicts with the base branch
+          </p>
+          <p className="mt-1 text-sm text-mist">{conflictEvent.message}</p>
+          <p className="mt-1 text-xs text-shadow">
+            Worth a closer look when it reaches review: a conflict resolution is where the agent
+            decided how two sets of changes should coexist.
+          </p>
+        </div>
+      ) : null}
 
       <div className="mt-4 flex items-center gap-3 rounded-md border border-rime-soft bg-surface-02 p-4">
         <span className="inline-flex gap-1">

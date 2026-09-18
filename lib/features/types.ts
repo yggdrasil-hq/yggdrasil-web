@@ -138,7 +138,9 @@ export type FeatureEventType =
   | "submit_build_result"
   | "run_started"
   | "update_design_preview"
-  | "submit_design";
+  | "submit_design"
+  /** Issue #27: this build's entrypoint resolved conflicts with its base. */
+  | "merge_conflicts";
 
 export interface FeatureEvent {
   id: string;
