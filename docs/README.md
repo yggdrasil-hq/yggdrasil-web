@@ -16,6 +16,7 @@ before reading the body.
 | Doc | Read this when |
 |-----|----------------|
 | [`concepts/authentication.md`](concepts/authentication.md) | Login UI, middleware, account settings, avatars. |
+| [`concepts/mock-api.md`](concepts/mock-api.md) | Running the app without the dev stack, seeing an `[MSW]` console warning, or adding a call to `lib/api.ts`. |
 
 ## conventions/
 | Doc | Read this when |
