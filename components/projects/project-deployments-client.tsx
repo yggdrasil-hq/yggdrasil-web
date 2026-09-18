@@ -16,6 +16,7 @@ import {
   canRollBackTo,
   DEPLOY_KIND_LABELS,
   describeDeploy,
+  describeDeployRef,
   describeRollbackImpact,
   findTarget,
   isDeploymentInFlight,
@@ -372,6 +373,11 @@ export function ProjectDeploymentsClient({ projectId }: { projectId: string }) {
                       {entry.lastError && (
                         <p className="mt-1 truncate font-mono text-xs text-red-400">
                           {entry.lastError}
+                        </p>
+                      )}
+                      {describeDeployRef(entry) && (
+                        <p className="mt-1 truncate font-mono text-xs text-shadow">
+                          {describeDeployRef(entry)}
                         </p>
                       )}
                     </div>

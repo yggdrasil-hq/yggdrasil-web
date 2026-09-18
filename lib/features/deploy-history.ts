@@ -32,6 +32,21 @@ export function describeDeploy(deploy: ProjectDeploy): string {
 }
 
 /**
+ * The git ref a history row was deployed from, as a short label, or null when
+ * the row has none (every deploy recorded before issue #26 fixed the dispatch
+ * sites, and any row whose job was deleted).
+ *
+ * Shown separately from `describeDeploy` rather than folded into its sentence:
+ * the sentence describes *what happened* to the release, and the ref answers a
+ * different question ("of what commit?") — a reader scanning for "which deploy
+ * was the one that broke it" wants the ref on its own.
+ */
+export function describeDeployRef(deploy: ProjectDeploy): string | null {
+  if (!deploy.ref) return null;
+  return `ref ${deploy.ref}`;
+}
+
+/**
  * Whether a history row is worth offering a rollback for: it must have actually
  * applied something, and it must not be the entry that is already live.
  *

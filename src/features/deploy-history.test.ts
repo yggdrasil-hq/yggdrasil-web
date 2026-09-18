@@ -3,6 +3,7 @@ import {
   canRollBackTo,
   DEPLOY_KIND_LABELS,
   describeDeploy,
+  describeDeployRef,
   describeRollbackImpact,
   findTarget,
   isDeploymentInFlight,
@@ -57,6 +58,19 @@ describe("describeDeploy", () => {
   it("labels both kinds", () => {
     expect(DEPLOY_KIND_LABELS.deploy).toBe("Deploy");
     expect(DEPLOY_KIND_LABELS.rollback).toBe("Rollback");
+  });
+});
+
+describe("describeDeployRef", () => {
+  // Issue #26: the ledger's `ref` column was always null because every `deploy`
+  // dispatch site omitted it, so this is the first time the value is ever
+  // populated — and a row only earns the line when it is.
+  it("labels a history row's git ref when it has one", () => {
+    expect(describeDeployRef(makeDeploy())).toBe("ref main");
+  });
+
+  it("shows no ref line for a row that has none", () => {
+    expect(describeDeployRef(makeDeploy({ ref: null }))).toBeNull();
   });
 });
 
