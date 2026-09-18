@@ -1,9 +1,11 @@
 "use client";
 
+import { ErrorMessage } from "@/components/ui/error-message";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/app-shell/app-shell";
 import { Button } from "@/components/ui/button";
+import { FilterToggleGroup } from "@/components/ui/filter-toggle";
 import { Input } from "@/components/ui/input";
 import { fetchDesigns, fetchProject } from "@/lib/api";
 import { appRoute } from "@/lib/config";
@@ -122,37 +124,32 @@ export function DesignsIndexClient({ projectId }: { projectId: string }) {
 
         {ordered.length > 0 && (
           <div className="mt-6 flex flex-wrap items-center gap-2">
-            {STATUS_FILTERS.map((filter) => {
-              const count =
-                filter.id === "all"
-                  ? ordered.length
-                  : counts[filter.id as DesignStatus];
-              const active = status === filter.id;
-              return (
-                <button
-                  key={filter.id}
-                  type="button"
-                  onClick={() => setStatus(filter.id)}
-                  className={`rounded-full border px-3 py-1 text-xs transition-colors ${
-                    active
-                      ? "border-rime bg-surface-03 text-frost"
-                      : "border-rime-soft text-mist hover:bg-surface-02 hover:text-frost"
-                  }`}
-                >
-                  {filter.label} ({count})
-                </button>
-              );
-            })}
+            <FilterToggleGroup
+              variant="pill"
+              label="Filter designs by status"
+              value={status}
+              onChange={setStatus}
+              options={STATUS_FILTERS.map((filter) => ({
+                id: filter.id,
+                label: (
+                  <>
+                    {filter.label} (
+                    {filter.id === "all" ? ordered.length : counts[filter.id as DesignStatus]})
+                  </>
+                ),
+              }))}
+            />
             <Input
               className="ml-auto max-w-xs"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
+              aria-label="Filter designs by name or slug"
               placeholder="Filter by name or slug…"
             />
           </div>
         )}
 
-        {error && <p className="mt-4 text-sm text-red-400">{error}</p>}
+        {error && <ErrorMessage className="mt-4 text-sm text-red-400">{error}</ErrorMessage>}
 
         {loaded && ordered.length === 0 && (
           <EmptyState projectId={projectId} />

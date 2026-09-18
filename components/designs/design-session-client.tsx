@@ -1,5 +1,6 @@
 "use client";
 
+import { ErrorMessage } from "@/components/ui/error-message";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/app-shell/app-shell";
@@ -139,6 +140,9 @@ export function DesignSessionClient({
                   value={replyDraft}
                   onChange={(event) => setReplyDraft(event.target.value)}
                   placeholder="Reply to the agent…"
+                  /* The placeholder is a hint, not a name — it disappears as soon
+                     as the user types. Assistive-only, like the grill inputs. */
+                  aria-label="Reply to the agent"
                   disabled={sending}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" && !event.shiftKey) {
@@ -152,7 +156,7 @@ export function DesignSessionClient({
                 </Button>
               </div>
             )}
-            {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
+            {error && <ErrorMessage className="mt-3 text-sm text-red-400">{error}</ErrorMessage>}
           </section>
 
           <section className="flex min-h-96 min-w-0 flex-col rounded-card border border-rime bg-surface-01 p-4">

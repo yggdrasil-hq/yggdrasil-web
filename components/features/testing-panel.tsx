@@ -1,8 +1,10 @@
 "use client";
 
+import { ErrorMessage } from "@/components/ui/error-message";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { RunRecording } from "@/components/tests/run-recording";
+import { FilterToggleGroup } from "@/components/ui/filter-toggle";
 import { fetchFeatureTestingResults } from "@/lib/api";
 import {
   isFailingRun,
@@ -103,7 +105,7 @@ export function TestingPanel({ projectId, featureId }: TestingPanelProps) {
         ) : null}
       </div>
 
-      {error ? <p className="mt-3 text-sm text-destructive">{error}</p> : null}
+      {error ? <ErrorMessage className="mt-3 text-sm text-destructive">{error}</ErrorMessage> : null}
 
       {!loaded ? <p className="mt-4 text-sm text-mist">Loading test results…</p> : null}
 
@@ -125,28 +127,15 @@ export function TestingPanel({ projectId, featureId }: TestingPanelProps) {
             {headline.message}
           </div>
 
-          <div className="flex gap-4 border-b border-rime-soft">
-            {(
-              [
-                { id: "all", label: "All results" },
-                { id: "failed", label: "Failed only" },
-              ] as const
-            ).map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setSubview(tab.id)}
-                className={cn(
-                  "border-b-2 px-1 pb-2 text-[13px] font-medium transition-colors",
-                  subview === tab.id
-                    ? "border-bifrost text-frost"
-                    : "border-transparent text-mist hover:text-frost",
-                )}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
+          <FilterToggleGroup
+            label="Test result filter"
+            options={[
+              { id: "all", label: "All results" },
+              { id: "failed", label: "Failed only" },
+            ] as const}
+            value={subview}
+            onChange={setSubview}
+          />
 
           {subview === "failed" && visibleRuns.length === 0 ? (
             <p className="mt-4 text-sm text-mist">

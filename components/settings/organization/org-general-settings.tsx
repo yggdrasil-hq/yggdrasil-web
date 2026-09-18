@@ -1,5 +1,6 @@
 "use client";
 
+import { ErrorMessage } from "@/components/ui/error-message";
 import { useEffect, useState } from "react";
 import { OrgSettingsLayout } from "./org-settings-layout";
 import { useOrgParam } from "./use-org-param";
@@ -80,7 +81,7 @@ export function OrgGeneralSettings() {
         </CardHeader>
         <div className="space-y-4 px-4 pb-4">
           {message ? <p className="text-sm text-bifrost">{message}</p> : null}
-          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          {error ? <ErrorMessage className="text-sm text-destructive">{error}</ErrorMessage> : null}
           <div className="flex flex-wrap gap-4">
             <div className="min-w-[220px] flex-1 space-y-2">
               <label htmlFor="orgName" className="text-sm text-mist">

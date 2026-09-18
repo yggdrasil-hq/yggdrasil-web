@@ -1,5 +1,6 @@
 "use client";
 
+import { ErrorMessage } from "@/components/ui/error-message";
 import { useEffect, useState } from "react";
 import { OrgSettingsLayout } from "./org-settings-layout";
 import { useOrgParam } from "./use-org-param";
@@ -133,7 +134,7 @@ export function OrgClusterSettings() {
         </CardHeader>
         <div className="space-y-3 px-4 pb-4">
           {message ? <p className="text-sm text-bifrost">{message}</p> : null}
-          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          {error ? <ErrorMessage className="text-sm text-destructive">{error}</ErrorMessage> : null}
 
           {editing && cluster ? (
             <p className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-200">

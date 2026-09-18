@@ -1,5 +1,6 @@
 "use client";
 
+import { ErrorMessage } from "@/components/ui/error-message";
 import { useSearchParams } from "next/navigation";
 import { AuthLayout } from "@/components/auth/auth-layout";
 import { Button } from "@/components/ui/button";
@@ -36,7 +37,7 @@ export function LoginPageClient() {
           </CardDescription>
         </CardHeader>
         <div className="space-y-4 px-4 pb-4">
-          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          {error ? <ErrorMessage className="text-sm text-destructive">{error}</ErrorMessage> : null}
           <Button
             className="w-full"
             type="button"

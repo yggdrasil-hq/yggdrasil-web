@@ -1,5 +1,6 @@
 "use client";
 
+import { ErrorMessage } from "@/components/ui/error-message";
 import { useEffect, useState } from "react";
 import { OrgSettingsLayout } from "./org-settings-layout";
 import { useOrgParam } from "./use-org-param";
@@ -74,7 +75,7 @@ export function OrgMembersSettings() {
       description="Everyone with access to this organization's projects, and what they can do."
     >
       <div className="space-y-6">
-        {error ? <p className="text-sm text-destructive">{error}</p> : null}
+        {error ? <ErrorMessage className="text-sm text-destructive">{error}</ErrorMessage> : null}
 
         <Card>
           <CardHeader>

@@ -1,5 +1,6 @@
 "use client";
 
+import { ErrorMessage } from "@/components/ui/error-message";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -135,7 +136,7 @@ export function NewDesignClient({
             {!project.hasDesignSurface && project.status === "ready" && (
               <p className="text-sm text-amber-300">This project was not configured with a user-facing design surface.</p>
             )}
-            {error && <p className="text-sm text-red-400">{error}</p>}
+            {error && <ErrorMessage className="text-sm text-red-400">{error}</ErrorMessage>}
             <Button
               type="submit"
               disabled={creating || project.status !== "ready" || !project.hasDesignSurface}

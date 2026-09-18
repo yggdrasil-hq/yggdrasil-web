@@ -8,7 +8,7 @@ import {
   manualReviewSubviewForStatus,
   type ManualReviewSubview,
 } from "@/lib/features/manual-review";
-import { cn } from "@/lib/utils";
+import { FilterToggleGroup } from "@/components/ui/filter-toggle";
 
 interface ManualReviewPanelProps {
   projectId: string;
@@ -34,23 +34,13 @@ export function ManualReviewPanel({ projectId, feature }: ManualReviewPanelProps
     <section className="rounded-card border border-rime bg-surface-01 p-6">
       <h2 className="text-base font-semibold text-frost">Manual Review</h2>
 
-      <div className="mt-3 flex gap-4 border-b border-rime-soft">
-        {MANUAL_REVIEW_SUBVIEWS.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => setSubview(tab.id)}
-            className={cn(
-              "border-b-2 px-1 pb-2 text-[13px] font-medium transition-colors",
-              subview === tab.id
-                ? "border-bifrost text-frost"
-                : "border-transparent text-mist hover:text-frost",
-            )}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      <FilterToggleGroup
+        className="mt-3"
+        label="Manual review status"
+        options={MANUAL_REVIEW_SUBVIEWS}
+        value={subview}
+        onChange={setSubview}
+      />
 
       <div className="mt-4">
         <p className="text-[13px] text-mist">

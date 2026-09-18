@@ -1,5 +1,6 @@
 "use client";
 
+import { ErrorMessage } from "@/components/ui/error-message";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
 import { useEffect, useState } from "react";
@@ -81,7 +82,7 @@ export function NotificationsPageClient() {
       </div>
 
       {error ? (
-        <p className="text-sm text-red-400">{error}</p>
+        <ErrorMessage className="text-sm text-red-400">{error}</ErrorMessage>
       ) : notifications.length === 0 ? (
         <Card>
           <CardHeader>

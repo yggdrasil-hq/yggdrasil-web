@@ -1,5 +1,6 @@
 "use client";
 
+import { ErrorMessage } from "@/components/ui/error-message";
 import { ExternalLink } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { AppShell } from "@/components/app-shell/app-shell";
@@ -327,9 +328,9 @@ export function ProjectDeploymentsClient({ projectId }: { projectId: string }) {
           )}
 
           {actionError && (
-            <p className="mt-4 rounded-md border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-400">
+            <ErrorMessage className="mt-4 rounded-md border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-400">
               {actionError}
-            </p>
+            </ErrorMessage>
           )}
 
           <h2 className="mt-8 text-sm font-semibold text-frost">History</h2>

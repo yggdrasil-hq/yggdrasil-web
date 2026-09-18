@@ -1,5 +1,6 @@
 "use client";
 
+import { ErrorMessage } from "@/components/ui/error-message";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -205,7 +206,7 @@ export function FeatureModelConfigClient() {
   }
 
   if (error) {
-    return <p className="text-sm text-destructive">{error}</p>;
+    return <ErrorMessage className="text-sm text-destructive">{error}</ErrorMessage>;
   }
 
   if (!config) {
@@ -395,7 +396,7 @@ export function FeatureModelConfigClient() {
                   </Button>
                 </div>
                 {tripletModelList.status === "failed" ? (
-                  <p className="text-xs text-destructive">{tripletModelList.error}</p>
+                  <ErrorMessage className="text-xs text-destructive">{tripletModelList.error}</ErrorMessage>
                 ) : null}
                 {tripletModelList.status === "idle" ? (
                   <p className="text-xs text-shadow">
@@ -415,6 +416,9 @@ export function FeatureModelConfigClient() {
                     value={draft.modelId}
                     disabled={savingTriplet}
                     onChange={(e) => setDraft((d) => ({ ...d, modelId: e.target.value }))}
+                    /* Distinct from the picker above it, which already carries a
+                       visible label — this one is the free-text escape hatch. */
+                    aria-label="Model ID typed by hand"
                   />
                 ) : null}
               </div>
@@ -439,7 +443,7 @@ export function FeatureModelConfigClient() {
               </div>
             </>
           )}
-          {actionError ? <p className="text-sm text-destructive">{actionError}</p> : null}
+          {actionError ? <ErrorMessage className="text-sm text-destructive">{actionError}</ErrorMessage> : null}
         </div>
       </Card>
     </div>

@@ -1,5 +1,6 @@
 "use client";
 
+import { ErrorMessage } from "@/components/ui/error-message";
 import { useCallback, useState } from "react";
 import { ActionItemsPanel } from "@/components/features/action-items-panel";
 import { useFeatureDetail } from "@/components/features/feature-detail-context";
@@ -56,7 +57,7 @@ export function FeatureActionItemsClient() {
         <p className="text-sm text-shadow">Approve the ADR on the Spec page to start the build.</p>
       ) : null}
 
-      {error ? <p className="text-sm text-red-400">{error}</p> : null}
+      {error ? <ErrorMessage className="text-sm text-red-400">{error}</ErrorMessage> : null}
 
       <ActionItemsPanel
         projectId={projectId}

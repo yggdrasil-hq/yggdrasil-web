@@ -1,5 +1,6 @@
 "use client";
 
+import { ErrorMessage } from "@/components/ui/error-message";
 import Link from "next/link";
 import { Plus } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -66,7 +67,7 @@ export function ProjectsPageClient() {
       {loading ? (
         <p className="text-sm text-mist">Loading projects…</p>
       ) : error ? (
-        <p className="text-sm text-red-400">{error}</p>
+        <ErrorMessage className="text-sm text-red-400">{error}</ErrorMessage>
       ) : projects.length === 0 ? (
         <Card className="border-dashed">
           <div className="flex flex-col items-center px-6 py-12 text-center sm:px-10 sm:py-16">

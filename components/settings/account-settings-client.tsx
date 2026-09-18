@@ -1,5 +1,6 @@
 "use client";
 
+import { ErrorMessage } from "@/components/ui/error-message";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -58,7 +59,7 @@ export function AccountSettingsClient() {
     >
       <div className="space-y-6">
         {message ? <p className="text-sm text-bifrost">{message}</p> : null}
-        {error ? <p className="text-sm text-destructive">{error}</p> : null}
+        {error ? <ErrorMessage className="text-sm text-destructive">{error}</ErrorMessage> : null}
 
         <Card>
           <CardHeader>
