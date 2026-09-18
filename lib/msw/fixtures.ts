@@ -1,4 +1,5 @@
-import { ORG_ROLE_LABELS } from "@/lib/features/types";
+import { getFeatureBucket } from "@/lib/features/statuses";
+import { hasFullModelConfigBundle, ORG_ROLE_LABELS } from "@/lib/features/types";
 import type {
   ActionQueueItem,
   AgenticReview,
@@ -902,16 +903,20 @@ export function addMockFeature(feature: Feature): void {
   recalculateMockOverview();
 }
 
+/**
+ * Recounts the mock overview from the mock features.
+ *
+ * Uses the shared `getFeatureBucket` rather than spelling the mapping out here,
+ * which is what it did before (issue #66) — and spelled it *differently*: this
+ * version put anything unrecognised in `inProgress` where the API counts it
+ * nowhere, so the mock counts and the real ones would diverge on the next status
+ * added rather than on a bug. Null is skipped for the same reason.
+ */
 function recalculateMockOverview(): void {
   mockOverview.counts = { planned: 0, inProgress: 0, completed: 0 };
   for (const feature of mockFeatures) {
-    if (feature.status === "draft" || feature.status === "spec_ready") {
-      mockOverview.counts.planned += 1;
-    } else if (feature.status === "merged" || feature.status === "cancelled") {
-      mockOverview.counts.completed += 1;
-    } else {
-      mockOverview.counts.inProgress += 1;
-    }
+    const bucket = getFeatureBucket(feature.status);
+    if (bucket) mockOverview.counts[bucket] += 1;
   }
 }
 
@@ -1267,23 +1272,25 @@ export function deleteMockSecret(projectId: string, secretId: string): boolean {
   return true;
 }
 
-const MODEL_CONFIG_KEYS = ["MODEL_BASE_URL", "MODEL_API_KEY", "MODEL_ID"];
-
-export function hasFullModelBundle(secrets: ProjectSecretMetadata[]): boolean {
-  return MODEL_CONFIG_KEYS.every((key) => secrets.some((secret) => secret.key === key));
-}
+/**
+ * Deliberately not redefined here. This file used to declare its own
+ * `hasFullModelBundle` with its own copy of the three key names — a duplicate of
+ * `hasFullModelConfigBundle` in `lib/features/types.ts`. Two copies of a product
+ * rule agree right up until one of them is updated (issue #66), so the shared one
+ * is imported at the top of this file instead.
+ */
 
 /** Mirrors the API's resolution (ADR 007): project bundle first, else the account default. */
 export function isMockModelConfigResolvable(projectId: string): boolean {
   const projectSecrets = getMockSecrets(projectId);
-  if (hasFullModelBundle(projectSecrets)) {
+  if (hasFullModelConfigBundle(projectSecrets)) {
     return true;
   }
   if (projectSecrets.length > 0) {
     // Partial project override — inconsistent state, not a fallback trigger.
     return false;
   }
-  return hasFullModelBundle(getMockUserSecrets());
+  return hasFullModelConfigBundle(getMockUserSecrets());
 }
 
 interface MockUserSecret {

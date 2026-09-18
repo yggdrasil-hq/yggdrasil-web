@@ -1,5 +1,9 @@
 import { http, HttpResponse } from "msw";
 import { apiUrl } from "@/lib/config";
+// Imported from its own module rather than re-exported through `fixtures`: the
+// rule belongs to the model-config types, and a second export path would be a
+// second place to keep in step (issue #66).
+import { hasFullModelConfigBundle } from "@/lib/features/types";
 import {
   acceptMockOrgInvite,
   addMockFeature,
@@ -42,7 +46,6 @@ import {
   getMockTests,
   getMockUserSecrets,
   addMockTest,
-  hasFullModelBundle,
   isMockModelConfigResolvable,
   mockCurrentUser,
   mockInstallationRepos,
@@ -123,7 +126,7 @@ export const handlers = [
 
     // ADR 007: a request bundle always resolves; otherwise the account
     // default has to be complete.
-    if (!body.modelConfig && !hasFullModelBundle(getMockUserSecrets())) {
+    if (!body.modelConfig && !hasFullModelConfigBundle(getMockUserSecrets())) {
       return HttpResponse.json(
         {
           error:

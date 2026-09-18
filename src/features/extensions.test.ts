@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  EXTENSION_UPLOAD_LIMITS,
   TRUST_ACKNOWLEDGEMENT,
   TRUST_WARNING,
   TRUST_WARNING_SHORT,
@@ -8,7 +9,9 @@ import {
   enabledProjectsLabel,
   extensionStatus,
   extensionStatusLabel,
+  fileBytes,
   fileCountLabel,
+  fileTooLarge,
   formatBytes,
   formatExtensionTimestamp,
   projectLoadState,
@@ -188,6 +191,100 @@ describe("draftBundleIssue", () => {
 
   it("flags an empty path", () => {
     expect(draftBundleIssue([{ path: "   ", content: "x" }], "src/index.ts")).toContain("needs a path");
+  });
+
+  /*
+   * Issue #66: the three size limits the API enforces were absent from the client
+   * entirely, so an over-limit bundle was accepted by the form and rejected by the
+   * API at the end of the flow. `fileTooLarge` had been written for exactly this
+   * and had no caller.
+   */
+  it("flags a bundle with more files than the API accepts", () => {
+    const files = Array.from({ length: EXTENSION_UPLOAD_LIMITS.maxFiles + 1 }, (_, i) => ({
+      path: `src/f${i}.ts`,
+      content: "x",
+    }));
+    const issue = draftBundleIssue(files, "src/f0.ts");
+    expect(issue).toContain("at most 16 files");
+  });
+
+  it("flags a single file over the per-file limit, naming it", () => {
+    const tooBig = "x".repeat(EXTENSION_UPLOAD_LIMITS.maxFileBytes + 1);
+    const issue = draftBundleIssue(
+      [{ path: "src/index.ts", content: tooBig }],
+      "src/index.ts",
+    );
+    expect(issue).toContain("src/index.ts");
+    expect(issue).toContain("64.0 KiB");
+  });
+
+  it("flags a bundle over the total limit even when each file is small", () => {
+    // Two files under the per-file cap whose sum is over the bundle cap: the
+    // check that a per-file-only implementation would miss.
+    const each = "x".repeat(50 * 1024);
+    const files = [
+      { path: "src/a.ts", content: each },
+      { path: "src/index.ts", content: each },
+    ];
+    const issue = draftBundleIssue(files, "src/index.ts");
+    expect(issue).toContain("bundle");
+    expect(issue).toContain("96.0 KiB");
+  });
+
+  it("accepts a bundle sitting exactly at the limits", () => {
+    // Boundaries, because an off-by-one in a size check rejects valid uploads.
+    const exactFile = "x".repeat(EXTENSION_UPLOAD_LIMITS.maxFileBytes);
+    expect(draftBundleIssue([{ path: "src/index.ts", content: exactFile }], "src/index.ts")).toBeNull();
+
+    const atTotal = "x".repeat(EXTENSION_UPLOAD_LIMITS.maxTotalBytes / 2);
+    expect(
+      draftBundleIssue(
+        [
+          { path: "src/a.ts", content: atTotal },
+          { path: "src/index.ts", content: atTotal },
+        ],
+        "src/index.ts",
+      ),
+    ).toBeNull();
+  });
+
+  it("counts the path-shape rules before the size rules", () => {
+    // A malformed path is a mistake to fix; a size limit is a limit to respect.
+    // Reporting "too big" for a bundle whose path is also invalid sends the user
+    // to the wrong fix.
+    const issue = draftBundleIssue(
+      [{ path: "/abs.ts", content: "x".repeat(EXTENSION_UPLOAD_LIMITS.maxFileBytes + 1) }],
+      "/abs.ts",
+    );
+    expect(issue).toContain("absolute");
+  });
+});
+
+describe("fileBytes / fileTooLarge", () => {
+  /*
+   * The UTF-16-versus-UTF-8 trap, which is why these two share a byte counter.
+   * `content.length` counts UTF-16 code units, so a bundle of non-ASCII text
+   * passes a client check based on it and is still rejected by the API — and the
+   * two agree exactly for the ASCII a developer tests with.
+   */
+  it("measures UTF-8 bytes, not UTF-16 length", () => {
+    const accented = "é";
+    expect(accented.length).toBe(1);
+    expect(fileBytes({ path: "a.ts", content: accented })).toBe(2);
+
+    const emoji = "🎉";
+    expect(emoji.length).toBe(2);
+    expect(fileBytes({ path: "a.ts", content: emoji })).toBe(4);
+  });
+
+  it("is false at the limit and true one byte over", () => {
+    const limit = EXTENSION_UPLOAD_LIMITS.maxFileBytes;
+    expect(fileTooLarge({ path: "a.ts", content: "x".repeat(limit) })).toBe(false);
+    expect(fileTooLarge({ path: "a.ts", content: "x".repeat(limit + 1) })).toBe(true);
+  });
+
+  it("accepts an explicit limit", () => {
+    expect(fileTooLarge({ path: "a.ts", content: "xxxx" }, 3)).toBe(true);
   });
 });
 
