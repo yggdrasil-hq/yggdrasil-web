@@ -73,9 +73,11 @@ const ACTION_LABELS: Record<string, string> = {
   "github.repos_synced": "Repositories synced from GitHub",
   "github.installation_updated": "GitHub App installation updated",
   "github.repositories_updated": "GitHub App repo access changed",
-  // ADR 022: a primary-deployment rollback. Grouped under "Deployments"
-  // above; the routine deploy trigger is deliberately unaudited (ADR 028).
+  // ADR 022: the two operator-initiated deployment actions. The routine
+  // push-driven deploy is still deliberately unaudited (ADR 028), because it
+  // has no actor to name and would add a row per push to `main`.
   "deploy.rolled_back": "Deployment rolled back",
+  "deploy.triggered": "Deployment triggered",
 };
 
 function titleCaseWords(value: string): string {
