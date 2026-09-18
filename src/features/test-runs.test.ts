@@ -11,6 +11,7 @@ import {
   runTone,
   runToneClass,
   runTriggerLabel,
+  describeTriggerRunFailure,
   summarizeHistory,
 } from "@/lib/features/test-runs";
 import type { JobStatus, TestRunHistoryEntry } from "@/lib/features/types";
@@ -112,8 +113,61 @@ describe("runTriggerLabel", () => {
     expect(runTriggerLabel(makeRun({ trigger: "feature" }))).toBe("Feature branch");
   });
 
+  /*
+   * Issue #31's on-demand run. It gets its own label rather than the fallback:
+   * the API records `trigger_source = 'manual'` specifically so a history entry
+   * does not attribute a deliberate run to the scheduler, and a label reading the
+   * same as the unknown-value fallback would undo that where a user looks.
+   */
+  it("labels a manual run as its own thing, not as the unknown fallback", () => {
+    expect(runTriggerLabel(makeRun({ trigger: "manual" }))).toBe("Run manually");
+    expect(runTriggerLabel(makeRun({ trigger: "manual" }))).not.toBe(
+      runTriggerLabel(makeRun({ trigger: null })),
+    );
+  });
+
   it("falls back for a run with no recorded trigger", () => {
     expect(runTriggerLabel(makeRun({ trigger: null }))).toBe("Run");
+  });
+});
+
+describe("describeTriggerRunFailure", () => {
+  /*
+   * Both refusals the API can give are 409s whose own sentence is the whole
+   * value — they imply different next actions (wait, versus finish project setup),
+   * so replacing them with generic copy would throw away the only actionable part.
+   */
+  it("echoes the API's reason for an in-flight run", () => {
+    const message = describeTriggerRunFailure(
+      "This test already has a run in progress (API error: 409 Conflict)",
+    );
+    expect(message).toBe("This test already has a run in progress");
+  });
+
+  it("echoes the API's reason for a project that is not ready", () => {
+    const message = describeTriggerRunFailure(
+      "Project initialization must complete before running tests (API error: 409 Conflict)",
+    );
+    expect(message).toContain("initialization must complete");
+  });
+
+  it("still says something actionable when a 409 carried no prose", () => {
+    expect(describeTriggerRunFailure("API error: 409 Conflict")).toBe(
+      "This test cannot be run right now.",
+    );
+  });
+
+  it("reuses the shared load-failure copy for anything else", () => {
+    // A 404 here is not a special case worth its own sentence, and reusing the
+    // shared module keeps its copy consistent with the rest of the app. This
+    // returns the `detail`, not the heading — the heading is the panel's job — so
+    // the assertion is on the sentence that carries the advice.
+    expect(describeTriggerRunFailure("Test not found (API error: 404 Not Found)")).toContain(
+      "may not have access",
+    );
+    expect(describeTriggerRunFailure("API error: 500 Internal Server Error")).toContain(
+      "server could not complete",
+    );
   });
 });
 

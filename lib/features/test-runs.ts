@@ -1,4 +1,9 @@
 import type { JobStatus, TestRunHistoryEntry } from "./types";
+import {
+  apiErrorDetail,
+  describeLoadFailure,
+  statusFrom,
+} from "./load-errors";
 
 /**
  * ADR 026 (issue #16): the pure half of a Test entity's run history.
@@ -82,11 +87,45 @@ export function formatDuration(ms: number | null): string {
   return minutes === 0 ? `${hours}h` : `${hours}h ${minutes}m`;
 }
 
-/** Who started the run — the distinction the feature Testing tab cannot show. */
+/**
+ * Who started the run — the distinction the feature Testing tab cannot show.
+ *
+ * `"manual"` is issue #31's on-demand run, and it gets its own label rather than
+ * falling through to `"Run"`: the whole reason that endpoint records
+ * `trigger_source = 'manual'` is so a history entry does not attribute a
+ * deliberate run to the scheduler, and a label that reads the same as the
+ * unknown-value fallback would undo that where a user actually looks. The bare
+ * `"Run"` is what an unrecognised-or-absent trigger gets, which is honest — we
+ * do not know what started it.
+ */
 export function runTriggerLabel(run: TestRunHistoryEntry): string {
   if (run.trigger === "schedule") return "Scheduled";
   if (run.trigger === "feature") return "Feature branch";
+  if (run.trigger === "manual") return "Run manually";
   return "Run";
+}
+
+/**
+ * Why pressing "Run now" did not produce a run, in the user's terms.
+ *
+ * Both refusals the API can give here are **409s whose sentence is the useful
+ * part** — "This test already has a run in progress" and "Project initialization
+ * must complete before running tests" are each a complete explanation, and each
+ * implies a different thing to do next (wait, versus go finish project setup).
+ * So a 409 echoes the API's words rather than replacing them with friendlier copy
+ * that would have to guess which case it was.
+ *
+ * Everything else falls back to the shared load-failure copy, because a 404 or a
+ * 500 from this endpoint is not a special case worth its own sentence — and
+ * reusing that module means the heading and retry advice stay consistent with the
+ * rest of the app instead of being re-invented for one button.
+ */
+export function describeTriggerRunFailure(message: string): string {
+  const status = statusFrom(message.trim());
+  if (status === 409) {
+    return apiErrorDetail(message) || "This test cannot be run right now.";
+  }
+  return describeLoadFailure(message, "test").detail;
 }
 
 export function runStatusLabel(status: JobStatus): string {
