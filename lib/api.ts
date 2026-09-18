@@ -1,4 +1,5 @@
 import { apiUrl } from "@/lib/config";
+import { LISTING_NEEDS_ADMIN } from "@/lib/features/model-catalog";
 import type {
   AgentJobKind,
   AuditEventsResponse,
@@ -40,6 +41,7 @@ import type {
   ProjectPreviewsResponse,
   ProjectResourceQuota,
   ProjectSecretMetadata,
+  ProviderModelsResult,
   ProviderType,
   RolesResponse,
   Test,
@@ -403,6 +405,53 @@ export async function createOrgModel(
     body: JSON.stringify(input),
   });
   return parseJson<OrgModel>(response);
+}
+
+/**
+ * The models a provider the organization has configured actually serves
+ * (ADR 018 / issue #36), so adding a catalog model is a choice rather than a
+ * hand-typed identifier that fails later as a broken job.
+ *
+ * A failure is returned rather than thrown: the provider being unreachable or
+ * the key being rejected is not an error in the *page*, and the caller renders
+ * the reason next to the model field instead of replacing the whole catalog with
+ * an error state.
+ */
+export async function fetchOrgProviderModels(
+  organizationId: string,
+  providerId: string,
+): Promise<ProviderModelsResult> {
+  const response = await fetch(
+    apiUrl(`/organizations/${organizationId}/providers/${providerId}/models`),
+    { cache: "no-store", credentials: "include" },
+  );
+  return parseJson<ProviderModelsResult>(response);
+}
+
+/**
+ * The same listing for a connection that is not in the catalog — the custom
+ * `baseUrl` + `apiKey` triplet, where nothing is stored to read and the
+ * credentials come from the form. Admin-only, like the stored-provider listing;
+ * the field keeps its free-text fallback for everyone else.
+ */
+export async function listModelsForConnection(
+  organizationId: string,
+  input: { baseUrl: string; apiKey: string; providerType?: ProviderType },
+): Promise<ProviderModelsResult> {
+  const response = await fetch(apiUrl(`/organizations/${organizationId}/providers/probe-models`), {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  // A 403 is not a listing failure — it is "you cannot do this", which the field
+  // explains differently (and which leaving the field as free text already
+  // handles). Returned as a reason rather than thrown so the card does not have
+  // to special-case an exception to get the copy right.
+  if (response.status === 403) {
+    return { ok: false, error: LISTING_NEEDS_ADMIN };
+  }
+  return parseJson<ProviderModelsResult>(response);
 }
 
 export async function deleteOrgModel(organizationId: string, modelId: string): Promise<void> {

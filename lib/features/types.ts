@@ -357,6 +357,26 @@ export const PROVIDER_TYPE_LABELS: Record<ProviderType, string> = {
 };
 
 /** Mirrors the API's DEFAULT_PROVIDER_BASE_URLS (ADR 018) — used to prefill the add-provider form. */
+/**
+ * ADR 018 / issue #36: one entry in a provider's own model list. `displayName`
+ * is null when the provider offers no label distinct from the id — a real state
+ * the catalog form distinguishes, rather than echoing the id back as a name the
+ * admin never wrote.
+ */
+export interface ProviderModel {
+  id: string;
+  displayName: string | null;
+}
+
+/**
+ * The listing response. `ok: false` carries a reason instead of throwing,
+ * because "the provider rejected the key" and "this provider serves no models"
+ * are different problems and only one of them means an empty dropdown.
+ */
+export type ProviderModelsResult =
+  | { ok: true; models: ProviderModel[]; providerId?: string }
+  | { ok: false; error: string };
+
 export const DEFAULT_PROVIDER_BASE_URLS: Record<Exclude<ProviderType, "custom_openai_compatible">, string> = {
   openrouter: "https://openrouter.ai/api/v1",
   anthropic: "https://api.anthropic.com/v1",
