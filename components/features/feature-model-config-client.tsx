@@ -22,12 +22,21 @@ import {
   type CustomTripletDraft,
 } from "@/lib/features/model-config";
 import {
+  IDLE_MODEL_LIST,
+  canListConnectionModels,
+  listUnavailableReason,
+  modelListStateFrom,
+  modelOptions,
+  type ModelListState,
+} from "@/lib/features/model-catalog";
+import {
   clearFeatureJobModelOverride,
   clearFeatureModelSecrets,
   fetchFeatureJobModelOverrides,
   fetchFeatureModelConfig,
   fetchFeatureModelSecrets,
   fetchOrgModels,
+  listModelsForConnection,
   saveFeatureModelSecrets,
   setFeatureJobModelOverride,
 } from "@/lib/api";
@@ -63,6 +72,13 @@ export function FeatureModelConfigClient() {
   const [savingOverride, setSavingOverride] = useState<AgentJobKind | null>(null);
   const [savingTriplet, setSavingTriplet] = useState(false);
   const [clearingTriplet, setClearingTriplet] = useState(false);
+  /**
+   * Issue #36: the provider's model list for the typed triplet. Admin-only at
+   * the API, so the field explains that and stays free text for everyone else —
+   * the required-credentials rule is the same one the API applies, checked here
+   * so the button is never offered when it can only fail.
+   */
+  const [tripletModelList, setTripletModelList] = useState<ModelListState>(IDLE_MODEL_LIST);
 
   useEffect(() => {
     let active = true;
@@ -144,6 +160,32 @@ export function FeatureModelConfigClient() {
       );
     } finally {
       setSavingTriplet(false);
+    }
+  }
+
+  /**
+   * Issue #36: list what the typed connection serves, so the Model ID field does
+   * not have to be guessed. Nothing here is stored — the API uses the supplied
+   * base URL and key for exactly one request — so the listing is always the
+   * provider's current answer, which is the question an admin asks after
+   * rotating a key.
+   */
+  async function handleListTripletModels() {
+    setTripletModelList({ status: "loading" });
+    try {
+      const result = await listModelsForConnection(project.organizationId, {
+        baseUrl: draft.modelBaseUrl.trim(),
+        apiKey: draft.modelApiKey.trim(),
+      });
+      setTripletModelList(modelListStateFrom(result));
+    } catch (listError) {
+      setTripletModelList({
+        status: "failed",
+        error:
+          listError instanceof Error
+            ? listError.message
+            : "Could not list the provider's models",
+      });
     }
   }
 
@@ -299,13 +341,76 @@ export function FeatureModelConfigClient() {
                 <label className="text-sm font-medium text-frost" htmlFor="feature-model-id">
                   Model ID
                 </label>
-                <Input
-                  id="feature-model-id"
-                  placeholder="gpt-4.1"
-                  value={draft.modelId}
-                  disabled={savingTriplet}
-                  onChange={(e) => setDraft((d) => ({ ...d, modelId: e.target.value }))}
-                />
+                <div className="flex items-end gap-2">
+                  {tripletModelList.status === "loaded" &&
+                  tripletModelList.models.length > 0 ? (
+                    <Select
+                      id="feature-model-id"
+                      value={draft.modelId}
+                      disabled={savingTriplet}
+                      onChange={(e) =>
+                        setDraft((d) => ({ ...d, modelId: e.target.value }))
+                      }
+                    >
+                      <option value="">Select a model…</option>
+                      {modelOptions({
+                        models: tripletModelList.models,
+                        selected: draft.modelId,
+                      }).map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </Select>
+                  ) : (
+                    <Input
+                      id="feature-model-id"
+                      placeholder="gpt-4.1"
+                      value={draft.modelId}
+                      disabled={savingTriplet}
+                      onChange={(e) => setDraft((d) => ({ ...d, modelId: e.target.value }))}
+                    />
+                  )}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={
+                      savingTriplet ||
+                      tripletModelList.status === "loading" ||
+                      !canListConnectionModels({
+                        baseUrl: draft.modelBaseUrl,
+                        apiKey: draft.modelApiKey,
+                      })
+                    }
+                    onClick={() => void handleListTripletModels()}
+                  >
+                    {tripletModelList.status === "loading" ? "Listing…" : "List models"}
+                  </Button>
+                </div>
+                {tripletModelList.status === "failed" ? (
+                  <p className="text-xs text-destructive">{tripletModelList.error}</p>
+                ) : null}
+                {tripletModelList.status === "idle" ? (
+                  <p className="text-xs text-shadow">
+                    {listUnavailableReason({
+                      baseUrl: draft.modelBaseUrl,
+                      apiKey: draft.modelApiKey,
+                      canUseProviderApi: true,
+                    }) ?? "You can pick from the provider's list, or type an ID."}
+                  </p>
+                ) : null}
+                {/* Free text stays reachable after a successful listing: an
+                    unlisted or not-yet-released model must still be usable. */}
+                {tripletModelList.status === "loaded" ? (
+                  <Input
+                    id="feature-model-id-typed"
+                    placeholder="…or type a model ID the provider does not list"
+                    value={draft.modelId}
+                    disabled={savingTriplet}
+                    onChange={(e) => setDraft((d) => ({ ...d, modelId: e.target.value }))}
+                  />
+                ) : null}
               </div>
               <div className="flex items-center gap-2">
                 <Button

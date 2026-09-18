@@ -32,6 +32,7 @@ import {
   fetchOrganizations,
   fetchOrgJobModelDefaults,
   fetchOrgModels,
+  fetchOrgProviderModels,
   fetchOrgProviders,
   setOrgJobModelDefault,
   testOrgProvider,
@@ -52,8 +53,16 @@ import type {
   OrgModel,
   OrgProvider,
   OrgRole,
+  ProviderModel,
   ProviderType,
 } from "@/lib/features/types";
+import {
+  IDLE_MODEL_LIST,
+  modelListStateFrom,
+  modelOptions,
+  suggestedDisplayName,
+  type ModelListState,
+} from "@/lib/features/model-catalog";
 
 export function OrgProvidersSettings() {
   const orgParam = useOrgParam();
@@ -427,6 +436,34 @@ function ModelsCard({
   const [providerId, setProviderId] = useState(providers[0]?.id ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * Issue #36: the provider's own model list, fetched on demand rather than on
+   * dialog open — a live call is always accurate, at the cost of a round trip
+   * that can fail, and a cached list is the thing that goes stale the moment an
+   * admin rotates a key.
+   */
+  const [modelList, setModelList] = useState<ModelListState>(IDLE_MODEL_LIST);
+
+  // A list belongs to the provider it was fetched from: switching providers must
+  // not leave the previous provider's models in the dropdown.
+  useEffect(() => {
+    setModelList(IDLE_MODEL_LIST);
+  }, [providerId]);
+
+  async function handleListModels() {
+    setModelList({ status: "loading" });
+    try {
+      const result = await fetchOrgProviderModels(orgId, providerId);
+      // Ignore a response for a provider the admin has since switched away from.
+      setModelList(modelListStateFrom(result));
+    } catch (listError) {
+      setModelList({
+        status: "failed",
+        error:
+          listError instanceof Error ? listError.message : "Could not list the provider's models",
+      });
+    }
+  }
 
   async function handleCreate() {
     setSaving(true);
@@ -507,12 +544,78 @@ function ModelsCard({
                 </option>
               ))}
             </Select>
-            <Input
-              value={modelId}
-              onChange={(e) => setModelId(e.target.value)}
-              placeholder="claude-sonnet-5"
-              className="font-mono"
-            />
+            <div className="space-y-1">
+              <div className="flex items-end gap-2">
+                {modelList.status === "loaded" ? (
+                  <Select
+                    value={modelId}
+                    onChange={(e) => {
+                      const chosen = e.target.value;
+                      setModelId(chosen);
+                      setDisplayName((current) =>
+                        suggestedDisplayName({
+                          models: modelList.models,
+                          modelId: chosen,
+                          currentDisplayName: current,
+                        }),
+                      );
+                    }}
+                    aria-label="Model ID"
+                  >
+                    <option value="">Select a model…</option>
+                    {modelOptions({ models: modelList.models, selected: modelId }).map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </Select>
+                ) : (
+                  <Input
+                    value={modelId}
+                    onChange={(e) => setModelId(e.target.value)}
+                    placeholder="claude-sonnet-5"
+                    className="font-mono"
+                    aria-label="Model ID"
+                  />
+                )}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={saving || modelList.status === "loading"}
+                  onClick={() => void handleListModels()}
+                >
+                  {modelList.status === "loading" ? "Listing…" : "List models"}
+                </Button>
+              </div>
+              {modelList.status === "failed" ? (
+                <p className="text-xs text-destructive">
+                  {modelList.error} — type the model ID instead.
+                </p>
+              ) : null}
+              {modelList.status === "loaded" ? (
+                <p className="text-xs text-shadow">
+                  {modelList.models.length === 1
+                    ? "1 model listed by the provider."
+                    : `${modelList.models.length} models listed by the provider.`}{" "}
+                  {modelList.models.length === 0
+                    ? "The provider served an empty list, so type the model ID."
+                    : "A model that is not listed can still be typed below the picker."}
+                </p>
+              ) : null}
+              {/* Free text stays reachable after a successful listing: this is
+                  "show what the provider already knows", not a closed set — an
+                  unlisted or not-yet-released model must still be addable. */}
+              {modelList.status === "loaded" ? (
+                <Input
+                  value={modelId}
+                  onChange={(e) => setModelId(e.target.value)}
+                  placeholder="…or type a model ID the provider does not list"
+                  className="font-mono"
+                  aria-label="Model ID (free text)"
+                />
+              ) : null}
+            </div>
             <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
