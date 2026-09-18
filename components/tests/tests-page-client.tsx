@@ -1,5 +1,6 @@
 "use client";
 
+import { ErrorMessage } from "@/components/ui/error-message";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
 import { Plus } from "lucide-react";
@@ -133,7 +134,7 @@ export function TestsPageClient({ projectId }: TestsPageClientProps) {
 
       <main className="flex-1 px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
         <div className="mx-auto max-w-content">
-          {error ? <p className="mb-4 text-sm text-red-400">{error}</p> : null}
+          {error ? <ErrorMessage className="mb-4 text-sm text-red-400">{error}</ErrorMessage> : null}
 
           {tests.length === 0 ? (
             <Card className="border-dashed">

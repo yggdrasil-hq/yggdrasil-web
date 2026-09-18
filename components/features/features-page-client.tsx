@@ -1,5 +1,6 @@
 "use client";
 
+import { ErrorMessage } from "@/components/ui/error-message";
 import Link from "next/link";
 import { Plus } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -162,7 +163,7 @@ export function FeaturesPageClient({ projectId }: FeaturesPageClientProps) {
         </div>
 
         {error && project ? (
-          <p className="mt-3 text-sm text-red-400">{error}</p>
+          <ErrorMessage className="mt-3 text-sm text-red-400">{error}</ErrorMessage>
         ) : null}
       </header>
 

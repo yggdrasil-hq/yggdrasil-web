@@ -1,5 +1,6 @@
 "use client";
 
+import { ErrorMessage } from "@/components/ui/error-message";
 import { useEffect, useState } from "react";
 import { BuildProgressPanel } from "@/components/features/build-progress-panel";
 import { useFeatureDetail } from "@/components/features/feature-detail-context";
@@ -84,7 +85,7 @@ export function FeatureImplementationClient() {
 
   return (
     <div className="space-y-6">
-      {error ? <p className="text-sm text-red-400">{error}</p> : null}
+      {error ? <ErrorMessage className="text-sm text-red-400">{error}</ErrorMessage> : null}
 
       {(feature.status === "queued" || feature.status === "running") && (
         <BuildProgressPanel
@@ -99,9 +100,9 @@ export function FeatureImplementationClient() {
           <h2 className="text-base font-semibold text-frost">This feature failed</h2>
           <p className="mt-1 text-sm text-mist">The build didn&apos;t complete successfully.</p>
           {lastError && (
-            <p className="mt-2 rounded-md bg-surface-02 p-3 font-mono text-xs text-red-400">
+            <ErrorMessage className="mt-2 rounded-md bg-surface-02 p-3 font-mono text-xs text-red-400">
               {lastError}
-            </p>
+            </ErrorMessage>
           )}
           <Button
             className="mt-4"

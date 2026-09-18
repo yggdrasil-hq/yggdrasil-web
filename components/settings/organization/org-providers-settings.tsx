@@ -1,5 +1,7 @@
 "use client";
 
+import { useDialogTriggerFocus } from "@/components/ui/dialog-focus";
+import { ErrorMessage } from "@/components/ui/error-message";
 import { useEffect, useState } from "react";
 import { OrgSettingsLayout } from "./org-settings-layout";
 import { useOrgParam } from "./use-org-param";
@@ -176,13 +178,17 @@ function ProvidersCard({
     setTestResult(null);
   }
 
+  const { remember: rememberTrigger, restore: restoreTriggerFocus } = useDialogTriggerFocus();
+
   function startAdd() {
+    rememberTrigger();
     resetForm();
     setEditingId(null);
     setDialogOpen(true);
   }
 
   function startEdit(provider: OrgProvider) {
+    rememberTrigger();
     resetForm();
     setName(provider.name);
     setProviderType(provider.providerType);
@@ -326,7 +332,7 @@ function ProvidersCard({
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={(open) => (open ? setDialogOpen(true) : cancel())}>
-        <DialogContent>
+        <DialogContent onCloseAutoFocus={restoreTriggerFocus}>
           <DialogHeader>
             <DialogTitle>{editingId ? "Update provider" : "Add provider"}</DialogTitle>
             <DialogDescription>
@@ -337,11 +343,24 @@ function ProvidersCard({
           </DialogHeader>
 
           <div className="space-y-3">
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" />
+            {/*
+             * These are inside a dialog whose fields are labelled visually by
+             * their placeholders alone, and the two selects have neither a
+             * placeholder nor a label — so before this they announced as "edit
+             * text" and "combo box" with nothing to identify them (#67).
+             * Assistive-only names, because the dialog is laid out for the eye.
+             */}
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Name"
+              aria-label="Provider name"
+            />
             {!editingId ? (
               <Select
                 value={providerType}
                 onChange={(e) => selectProviderType(e.target.value as ProviderType)}
+                aria-label="Provider type"
               >
                 {PROVIDER_TYPES.map((type) => (
                   <option key={type} value={type}>
@@ -354,6 +373,7 @@ function ProvidersCard({
               value={baseUrl}
               onChange={(e) => setBaseUrl(e.target.value)}
               disabled={baseUrlIsFixed}
+              aria-label="Base URL"
               placeholder={
                 providerType === "custom_openai_compatible"
                   ? "Base URL (required)"
@@ -369,6 +389,7 @@ function ProvidersCard({
                 setTestResult(null);
               }}
               placeholder={editingId ? "Leave blank to keep the current key" : "API key"}
+              aria-label="API key"
             />
 
             {testResult ? (
@@ -384,7 +405,7 @@ function ProvidersCard({
               </Alert>
             ) : null}
 
-            {error ? <p className="text-sm text-destructive">{error}</p> : null}
+            {error ? <ErrorMessage className="text-sm text-destructive">{error}</ErrorMessage> : null}
           </div>
 
           <DialogFooter className="sm:flex-row sm:items-center sm:justify-between">
@@ -536,8 +557,13 @@ function ModelsCard({
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               placeholder="Display name"
+              aria-label="Model display name"
             />
-            <Select value={providerId} onChange={(e) => setProviderId(e.target.value)}>
+            <Select
+              value={providerId}
+              onChange={(e) => setProviderId(e.target.value)}
+              aria-label="Provider"
+            >
               {providers.map((provider) => (
                 <option key={provider.id} value={provider.id}>
                   {provider.name}
@@ -589,9 +615,9 @@ function ModelsCard({
                 </Button>
               </div>
               {modelList.status === "failed" ? (
-                <p className="text-xs text-destructive">
+                <ErrorMessage className="text-xs text-destructive">
                   {modelList.error} — type the model ID instead.
-                </p>
+                </ErrorMessage>
               ) : null}
               {modelList.status === "loaded" ? (
                 <p className="text-xs text-shadow">
@@ -650,7 +676,7 @@ function ModelsCard({
           <p className="text-sm text-mist">Add a provider above before adding a model.</p>
         ) : null}
 
-        {error ? <p className="text-sm text-destructive">{error}</p> : null}
+        {error ? <ErrorMessage className="text-sm text-destructive">{error}</ErrorMessage> : null}
       </div>
     </Card>
   );
@@ -741,7 +767,7 @@ function JobDefaultsCard({
           );
         })}
 
-        {error ? <p className="text-sm text-destructive">{error}</p> : null}
+        {error ? <ErrorMessage className="text-sm text-destructive">{error}</ErrorMessage> : null}
       </div>
     </Card>
   );

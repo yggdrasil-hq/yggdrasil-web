@@ -1,5 +1,6 @@
 "use client";
 
+import { ErrorMessage } from "@/components/ui/error-message";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useFeatureDetail } from "@/components/features/feature-detail-context";
@@ -133,9 +134,9 @@ export function FeatureSpecClient() {
               : "The spec grill session didn't complete successfully."}
           </p>
           {lastError && (
-            <p className="mt-2 rounded-md bg-surface-02 p-3 font-mono text-xs text-red-400">
+            <ErrorMessage className="mt-2 rounded-md bg-surface-02 p-3 font-mono text-xs text-red-400">
               {lastError}
-            </p>
+            </ErrorMessage>
           )}
           <Button className="mt-4" disabled={retrying} onClick={() => void handleRetryGrill()}>
             {retrying ? "Retrying…" : "Retry grill"}
@@ -179,7 +180,7 @@ export function FeatureSpecClient() {
         </Link>
       )}
 
-      {error ? <p className="text-sm text-red-400">{error}</p> : null}
+      {error ? <ErrorMessage className="text-sm text-red-400">{error}</ErrorMessage> : null}
 
       {feature.status === "spec_ready" && (
         <section className="flex h-[calc(100vh-16rem)] min-h-[30rem] flex-col overflow-hidden rounded-card border border-rime bg-surface-01">
@@ -217,6 +218,10 @@ export function FeatureSpecClient() {
               onChange={(event) => setAdrDraft(event.target.value)}
               readOnly={feature.adrApproved}
               spellCheck={false}
+              /* The stage heading names this region visually but is not
+                 associated with it, so the editor — the main control on the
+                 page — would otherwise be announced as an unnamed text box. */
+              aria-label="ADR markdown"
             />
             <Markdown
               content={adrDraft}

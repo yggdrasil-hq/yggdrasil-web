@@ -1,5 +1,6 @@
 "use client";
 
+import { ErrorMessage } from "@/components/ui/error-message";
 import Link from "next/link";
 import { Search } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -278,7 +279,7 @@ export function CreateProjectPageClient() {
             </div>
           </Card>
 
-          {error ? <p className="text-sm text-red-400">{error}</p> : null}
+          {error ? <ErrorMessage className="text-sm text-red-400">{error}</ErrorMessage> : null}
 
           <div className="flex flex-wrap gap-3">
             <Button type="button" onClick={continueToRepos}>
@@ -377,6 +378,7 @@ export function CreateProjectPageClient() {
                       value={search}
                       onChange={(event) => setSearch(event.target.value)}
                       placeholder="Search repositories…"
+                      aria-label="Search repositories"
                       className="pl-9"
                     />
                   </div>
@@ -427,7 +429,7 @@ export function CreateProjectPageClient() {
             </div>
           </Card>
 
-          {error ? <p className="text-sm text-red-400">{error}</p> : null}
+          {error ? <ErrorMessage className="text-sm text-red-400">{error}</ErrorMessage> : null}
 
           <div className="flex flex-wrap gap-3">
             <Button type="submit" disabled={!primaryRepo || submitting}>

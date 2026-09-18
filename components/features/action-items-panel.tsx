@@ -1,5 +1,6 @@
 "use client";
 
+import { ErrorMessage } from "@/components/ui/error-message";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -125,7 +126,7 @@ export function ActionItemsPanel({
         </CardDescription>
       </CardHeader>
       <div className="space-y-2 px-4 pb-4">
-        {error ? <p className="text-sm text-destructive">{error}</p> : null}
+        {error ? <ErrorMessage className="text-sm text-destructive">{error}</ErrorMessage> : null}
         {loading ? <p className="text-sm text-mist">Loading…</p> : null}
 
         {!loading && open.length === 0 && resolved.length === 0 ? (

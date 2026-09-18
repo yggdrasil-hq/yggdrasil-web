@@ -1,5 +1,6 @@
 "use client";
 
+import { ErrorMessage } from "@/components/ui/error-message";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { HubLayout } from "@/components/app-shell/hub-layout";
@@ -61,7 +62,7 @@ export function InviteAccept({ token }: { token: string }) {
           <CardDescription>Accepting adds you to the organization you were invited to.</CardDescription>
         </CardHeader>
         <div className="px-4 pb-4">
-          {error ? <p className="mb-3 text-sm text-destructive">{error}</p> : null}
+          {error ? <ErrorMessage className="mb-3 text-sm text-destructive">{error}</ErrorMessage> : null}
           <div className="flex gap-3">
             <Button onClick={() => void accept()} disabled={pending}>
               {pending ? "Accepting…" : "Accept invite"}

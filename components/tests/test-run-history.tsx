@@ -1,5 +1,6 @@
 "use client";
 
+import { ErrorMessage } from "@/components/ui/error-message";
 import { formatDistanceToNow } from "date-fns";
 import { useEffect, useState } from "react";
 import { RunRecording } from "@/components/tests/run-recording";
@@ -107,7 +108,7 @@ export function TestRunHistory({
         </CardDescription>
       </CardHeader>
 
-      {error ? <p className="mt-3 text-sm text-destructive">{error}</p> : null}
+      {error ? <ErrorMessage className="mt-3 text-sm text-destructive">{error}</ErrorMessage> : null}
 
       {!error && runs === null ? (
         <p className="mt-3 text-sm text-mist">Loading run history…</p>

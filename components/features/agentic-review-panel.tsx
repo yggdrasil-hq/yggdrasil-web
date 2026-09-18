@@ -1,9 +1,11 @@
 "use client";
 
+import { ErrorMessage } from "@/components/ui/error-message";
 import { useEffect, useState } from "react";
 import { fetchFeatureAgenticReview } from "@/lib/api";
 import type { AgenticReview } from "@/lib/features/types";
 import { agenticReviewToView, blockStatusLabel } from "@/lib/features/agentic-review";
+import { FilterToggleGroup } from "@/components/ui/filter-toggle";
 import { cn } from "@/lib/utils";
 
 interface AgenticReviewPanelProps {
@@ -22,7 +24,13 @@ export function AgenticReviewPanel({ projectId, featureId }: AgenticReviewPanelP
   const [review, setReview] = useState<AgenticReview | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [subview, setSubview] = useState<AgenticReview["verdict"]>("approved");
+  /**
+   * Non-nullable on purpose: this is a filter with a default, never "no filter".
+   * The review's own `verdict` may be null (no verdict yet), but that is a
+   * property of the data, not of the selected subview — and leaving null in the
+   * type let the toggle render with no option pressed.
+   */
+  const [subview, setSubview] = useState<NonNullable<AgenticReview["verdict"]>>("approved");
 
   useEffect(() => {
     let active = true;
@@ -56,7 +64,7 @@ export function AgenticReviewPanel({ projectId, featureId }: AgenticReviewPanelP
         ) : null}
       </div>
 
-      {error ? <p className="mt-3 text-sm text-destructive">{error}</p> : null}
+      {error ? <ErrorMessage className="mt-3 text-sm text-destructive">{error}</ErrorMessage> : null}
 
       {!loaded ? (
         <p className="mt-4 text-sm text-mist">Loading agentic review…</p>
@@ -71,28 +79,15 @@ export function AgenticReviewPanel({ projectId, featureId }: AgenticReviewPanelP
 
       {loaded && !error && review && view ? (
         <div className="mt-4">
-          <div className="flex gap-4 border-b border-rime-soft">
-            {(
-              [
-                { id: "approved", label: "Approved" },
-                { id: "changes_requested", label: "Changes requested" },
-              ] as const
-            ).map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setSubview(tab.id)}
-                className={cn(
-                  "border-b-2 px-1 pb-2 text-[13px] font-medium transition-colors",
-                  subview === tab.id
-                    ? "border-bifrost text-frost"
-                    : "border-transparent text-mist hover:text-frost",
-                )}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
+          <FilterToggleGroup
+            label="Review verdict filter"
+            options={[
+              { id: "approved", label: "Approved" },
+              { id: "changes_requested", label: "Changes requested" },
+            ] as const}
+            value={subview}
+            onChange={setSubview}
+          />
 
           <div className="mt-4">
             {view.verdict === "approved" ? (

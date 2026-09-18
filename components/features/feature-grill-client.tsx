@@ -1,5 +1,6 @@
 "use client";
 
+import { ErrorMessage } from "@/components/ui/error-message";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -366,10 +367,10 @@ export function FeatureGrillClient() {
         </div>
 
         {stoppedMessage ? (
-          <p className="mt-4 text-sm text-red-400">{stoppedMessage}</p>
+          <ErrorMessage className="mt-4 text-sm text-red-400">{stoppedMessage}</ErrorMessage>
         ) : null}
 
-        {actionError ? <p className="mt-2 text-sm text-red-400">{actionError}</p> : null}
+        {actionError ? <ErrorMessage className="mt-2 text-sm text-red-400">{actionError}</ErrorMessage> : null}
 
         {canReplyToGrill({
           awaitingUserInput: feature.awaitingUserInput,
@@ -380,6 +381,9 @@ export function FeatureGrillClient() {
               value={replyDraft}
               onChange={(event) => setReplyDraft(event.target.value)}
               placeholder="Type your reply…"
+              /* Placeholder only, so the name is assistive-only; a screen reader
+                 user needs to know this is where the answer goes. */
+              aria-label="Your reply to the agent"
               disabled={sendingReply}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey) {

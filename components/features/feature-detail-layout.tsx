@@ -1,5 +1,6 @@
 "use client";
 
+import { ErrorMessage } from "@/components/ui/error-message";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { AppShell } from "@/components/app-shell/app-shell";
@@ -184,7 +185,7 @@ export function FeatureDetailLayout({ projectId, featureId, children }: FeatureD
               </Button>
             ) : null}
           </div>
-          {actionError ? <p className="text-sm text-red-400">{actionError}</p> : null}
+          {actionError ? <ErrorMessage className="text-sm text-red-400">{actionError}</ErrorMessage> : null}
         </div>
       </header>
 

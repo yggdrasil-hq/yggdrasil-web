@@ -1,5 +1,6 @@
 "use client";
 
+import { ErrorMessage } from "@/components/ui/error-message";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AuthLayout } from "@/components/auth/auth-layout";
@@ -80,7 +81,7 @@ export default function ConfirmUsernamePage() {
           </CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit} className="space-y-4 px-4 pb-4">
-          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          {error ? <ErrorMessage className="text-sm text-destructive">{error}</ErrorMessage> : null}
           <div className="space-y-2">
             <label htmlFor="username" className="text-sm text-mist">
               Username

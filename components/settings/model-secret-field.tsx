@@ -1,5 +1,6 @@
 "use client";
 
+import { ErrorMessage } from "@/components/ui/error-message";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -172,7 +173,7 @@ export function ModelSecretField({
         </div>
       ) : null}
 
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+      {error ? <ErrorMessage className="text-sm text-destructive">{error}</ErrorMessage> : null}
     </div>
   );
 }

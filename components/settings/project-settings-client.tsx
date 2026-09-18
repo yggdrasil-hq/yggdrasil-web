@@ -1,5 +1,7 @@
 "use client";
 
+import { useDialogTriggerFocus } from "@/components/ui/dialog-focus";
+import { ErrorMessage } from "@/components/ui/error-message";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
@@ -115,6 +117,8 @@ export function ProjectSettingsClient({ projectId }: ProjectSettingsClientProps)
     null,
   );
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const { remember: rememberDeleteTrigger, restore: restoreDeleteTriggerFocus } =
+    useDialogTriggerFocus();
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -400,7 +404,7 @@ export function ProjectSettingsClient({ projectId }: ProjectSettingsClientProps)
             <div className="space-y-3 px-4 pb-4">
               <p className="text-xs text-shadow">{TRUST_WARNING_SHORT}</p>
               {extensionsError ? (
-                <p className="text-xs text-red-400">{extensionsError}</p>
+                <ErrorMessage className="text-xs text-red-400">{extensionsError}</ErrorMessage>
               ) : null}
               <label className="flex items-center gap-2 text-sm text-frost">
                 <input
@@ -551,6 +555,9 @@ export function ProjectSettingsClient({ projectId }: ProjectSettingsClientProps)
                             : current,
                         )
                       }
+                      /* Two fields side by side with placeholders only; the
+                         grid layout is why neither has a visible label. */
+                      aria-label="Repository owner"
                       placeholder="Owner"
                     />
                     <Input
@@ -560,6 +567,7 @@ export function ProjectSettingsClient({ projectId }: ProjectSettingsClientProps)
                           current ? { ...current, githubRepo: event.target.value } : current,
                         )
                       }
+                      aria-label="Repository name"
                       placeholder="Repository"
                     />
                   </div>
@@ -585,7 +593,7 @@ export function ProjectSettingsClient({ projectId }: ProjectSettingsClientProps)
                 </div>
               ) : null}
 
-              {actionError ? <p className="text-sm text-destructive">{actionError}</p> : null}
+              {actionError ? <ErrorMessage className="text-sm text-destructive">{actionError}</ErrorMessage> : null}
             </div>
           </Card>
 
@@ -662,7 +670,7 @@ export function ProjectSettingsClient({ projectId }: ProjectSettingsClientProps)
                   ))}
                 </>
               )}
-              {actionError ? <p className="text-sm text-destructive">{actionError}</p> : null}
+              {actionError ? <ErrorMessage className="text-sm text-destructive">{actionError}</ErrorMessage> : null}
             </div>
           </Card>
 
@@ -708,7 +716,7 @@ export function ProjectSettingsClient({ projectId }: ProjectSettingsClientProps)
                   );
                 })}
                 {overrideError ? (
-                  <p className="text-sm text-destructive">{overrideError}</p>
+                  <ErrorMessage className="text-sm text-destructive">{overrideError}</ErrorMessage>
                 ) : null}
               </div>
             </Card>
@@ -740,6 +748,7 @@ export function ProjectSettingsClient({ projectId }: ProjectSettingsClientProps)
               <Button
                 variant="destructive"
                 onClick={() => {
+                  rememberDeleteTrigger();
                   setDeleteDialogOpen(true);
                   setDeleteConfirmText("");
                   setDeleteError(null);
@@ -761,7 +770,7 @@ export function ProjectSettingsClient({ projectId }: ProjectSettingsClientProps)
           }
         }}
       >
-        <DialogContent>
+        <DialogContent onCloseAutoFocus={restoreDeleteTriggerFocus}>
           <DialogHeader>
             <DialogTitle>Delete {project.name}</DialogTitle>
             <DialogDescription>
@@ -783,10 +792,10 @@ export function ProjectSettingsClient({ projectId }: ProjectSettingsClientProps)
               onChange={(event) => setDeleteConfirmText(event.target.value)}
               disabled={deleting}
             />
-            {deleteError ? <p className="text-sm text-destructive">{deleteError}</p> : null}
+            {deleteError ? <ErrorMessage className="text-sm text-destructive">{deleteError}</ErrorMessage> : null}
             {deleteBlocker ? (
               <div className="space-y-2">
-                <p className="text-sm text-destructive">{deleteBlocker.reason}</p>
+                <ErrorMessage className="text-sm text-destructive">{deleteBlocker.reason}</ErrorMessage>
                 {deleteBlocker.features.length > 0 ? (
                   <ul className="space-y-1">
                     {deleteBlocker.features.map((feature) => (

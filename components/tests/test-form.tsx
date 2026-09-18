@@ -1,5 +1,6 @@
 "use client";
 
+import { ErrorMessage } from "@/components/ui/error-message";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -113,6 +114,9 @@ export function TestForm({
           <select
             value={presetId}
             onChange={(event) => setPresetId(event.target.value as TestSchedulePresetId)}
+            /* No placeholder and no visible label: this control was completely
+               unnamed, so it announced only as "combo box". */
+            aria-label="Test schedule"
             className="w-full rounded-md border border-rime bg-surface-02 px-3 py-2 text-sm text-frost"
           >
             {Object.entries(TEST_SCHEDULE_PRESETS).map(([id, preset]) => (
@@ -128,6 +132,7 @@ export function TestForm({
               value={customCron}
               onChange={(event) => setCustomCron(event.target.value)}
               placeholder="0 9 * * *"
+              aria-label="Custom cron expression"
               required
             />
           ) : null}
@@ -146,12 +151,13 @@ export function TestForm({
             value={specMarkdown}
             onChange={(event) => setSpecMarkdown(event.target.value)}
             className="min-h-80 w-full rounded-md border border-rime bg-surface-02 p-4 font-mono text-sm text-frost"
+            aria-label="Test spec markdown"
             required
           />
         </div>
       </Card>
 
-      {error ? <p className="text-sm text-red-400">{error}</p> : null}
+      {error ? <ErrorMessage className="text-sm text-red-400">{error}</ErrorMessage> : null}
 
       <Button
         type="submit"

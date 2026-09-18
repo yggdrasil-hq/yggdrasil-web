@@ -1,5 +1,6 @@
 "use client";
 
+import { ErrorMessage } from "@/components/ui/error-message";
 import { useEffect, useState } from "react";
 import { fetchDeployStatus, triggerDeploy } from "@/lib/api";
 import type { DeployStatus } from "@/lib/features/types";
@@ -89,7 +90,7 @@ export function DeployStatusPanel({ projectId }: DeployStatusPanelProps) {
 
       <div className="mt-4">{renderStatus(deploy, inFlight, startedAt, now)}</div>
 
-      {error && <p className="mt-2 text-sm text-red-400">{error}</p>}
+      {error && <ErrorMessage className="mt-2 text-sm text-red-400">{error}</ErrorMessage>}
     </section>
   );
 }
@@ -120,9 +121,9 @@ function renderStatus(
       <div className="rounded-md border border-red-500/30 bg-red-500/10 p-4">
         <p className="text-sm text-frost">Last deploy failed.</p>
         {deploy.lastError && (
-          <p className="mt-2 rounded-md bg-surface-02 p-3 font-mono text-xs text-red-400">
+          <ErrorMessage className="mt-2 rounded-md bg-surface-02 p-3 font-mono text-xs text-red-400">
             {deploy.lastError}
-          </p>
+          </ErrorMessage>
         )}
       </div>
     );
