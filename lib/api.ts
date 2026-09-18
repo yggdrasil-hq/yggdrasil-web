@@ -1,4 +1,5 @@
 import { apiUrl } from "@/lib/config";
+import { formatApiError } from "@/lib/features/load-errors";
 import { LISTING_NEEDS_ADMIN } from "@/lib/features/model-catalog";
 import type {
   AgentJobKind,
@@ -59,7 +60,11 @@ import type {
 async function parseJson<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const body = (await response.json().catch(() => null)) as { error?: string } | null;
-    throw new Error(body?.error ?? `API error: ${response.status} ${response.statusText}`);
+    // The status is always included, not only when there is no body: it is the
+    // one thing the failure-copy module classifies on, and building the message
+    // anywhere else is how it came to be dropped for every error the API
+    // answered with JSON (see `formatApiError`'s note).
+    throw new Error(formatApiError(response.status, response.statusText, body?.error));
   }
   return response.json() as Promise<T>;
 }

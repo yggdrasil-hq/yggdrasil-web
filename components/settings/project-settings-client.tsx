@@ -46,6 +46,7 @@ import {
   type ProjectDeletionBlocker,
 } from "@/lib/api";
 import { ModelSecretField } from "@/components/settings/model-secret-field";
+import { LoadFailure } from "@/components/ui/load-failure";
 import { ProjectNotificationMuteCard } from "@/components/settings/project-notification-mute";
 import { TRUST_WARNING_SHORT, projectLoadState } from "@/lib/features/extensions";
 import { appRoute } from "@/lib/config";
@@ -331,11 +332,13 @@ export function ProjectSettingsClient({ projectId }: ProjectSettingsClientProps)
   }
 
   if (error) {
-    return (
-      <div className="p-6">
-        <p className="text-sm text-destructive">{error}</p>
-      </div>
-    );
+    // The same treatment as every other project-scoped client (see
+    // `components/ui/load-failure.tsx`). This page was missed when that was
+    // applied, so it was still rendering a bare centred paragraph — no shell, no
+    // navigation, and the raw API sentence as the whole message. Reproduced by
+    // opening a project that does not exist, which showed `Project not found`
+    // and nothing else.
+    return <LoadFailure message={error} subject="project" />;
   }
 
   if (!project) {
