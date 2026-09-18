@@ -17,6 +17,27 @@ export interface RunCounts {
   total: number;
 }
 
+/**
+ * The minimum a run has to expose for the tone/status/count helpers below.
+ *
+ * Deliberately structural rather than `TestRunHistoryEntry`: the feature
+ * Testing tab's runs (`TestingRun`, ADR 015) and a Test entity's history rows
+ * (ADR 026) are two different API shapes that answer the same three questions —
+ * how did it end, what did it report, which steps failed — and duplicating these
+ * helpers for the second shape is how the two surfaces drift into colouring the
+ * same state differently (issue #40's "failures are not visually distinguished").
+ */
+export interface RunnableRun {
+  status: JobStatus;
+  report: {
+    passed: number;
+    failed: number;
+    skipped: number;
+    total: number;
+  } | null;
+  steps: Array<{ status: "pass" | "fail" }>;
+}
+
 export type RunTone = "pass" | "fail" | "active" | "idle";
 
 /**
@@ -27,7 +48,7 @@ export type RunTone = "pass" | "fail" | "active" | "idle";
  * results. Rendering it as "0 passed, 0 failed" would read as a clean run and
  * hide exactly the runs an operator most needs to see.
  */
-export function runCounts(run: TestRunHistoryEntry): RunCounts | null {
+export function runCounts(run: RunnableRun): RunCounts | null {
   if (!run.report) return null;
   return {
     passed: run.report.passed,
@@ -93,7 +114,7 @@ export function runStatusLabel(status: JobStatus): string {
  * completed run with no report stays "idle" rather than being tinted either way,
  * because there is nothing to judge.
  */
-export function runTone(run: TestRunHistoryEntry): RunTone {
+export function runTone(run: RunnableRun): RunTone {
   if (run.status === "failed" || run.status === "cancelled") return "fail";
   if (run.status === "pending" || run.status === "running") return "active";
   const counts = runCounts(run);
@@ -115,7 +136,7 @@ export function runToneClass(tone: RunTone): string {
 }
 
 /** Steps that did not pass, in report order — the detail view's shortlist. */
-export function failingSteps(run: TestRunHistoryEntry): TestRunHistoryEntry["steps"] {
+export function failingSteps(run: RunnableRun): RunnableRun["steps"] {
   return run.steps.filter((step) => step.status === "fail");
 }
 

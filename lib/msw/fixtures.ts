@@ -1032,6 +1032,8 @@ const mockTestReports: Record<string, TestingResults> = {
       testId: "test_009",
       testGroup: null,
       status: "completed",
+      lastError: null,
+      completedAt: new Date().toISOString(),
       report: {
         passed: 2,
         failed: 0,

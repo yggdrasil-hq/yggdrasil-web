@@ -602,6 +602,14 @@ export interface TestingRun {
   status: JobStatus;
   report: TestingReport | null;
   steps: TestingStep[];
+  /**
+   * The job's failure message, when it has one. Issue #40: a run can fail
+   * without ever producing a report, and this is the only thing that says why —
+   * without it a failed row reads "failed" and nothing else.
+   */
+  lastError: string | null;
+  /** When the run finished, so an unreported row can be dated like a reported one. */
+  completedAt: string | null;
 }
 
 export interface TestingResults {
@@ -647,6 +655,8 @@ export function testReportToTestingResults(
         createdAt: new Date().toISOString(),
       },
       steps: [],
+      lastError: null,
+      completedAt: new Date().toISOString(),
     }],
   };
 }

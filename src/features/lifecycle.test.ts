@@ -24,6 +24,8 @@ function sampleResults(): TestingResults {
       testId: "test_x",
       testGroup: null,
       status: "completed",
+      lastError: null,
+      completedAt: new Date().toISOString(),
       report: {
         passed: 2,
         failed: 1,
@@ -75,6 +77,17 @@ describe("hasTestingFailures", () => {
     passing.runs[0]!.report!.failed = 0;
     passing.runs[0]!.steps = passing.runs[0]!.steps.map((step) => ({ ...step, status: "pass" }));
     expect(hasTestingFailures(passing)).toBe(false);
+  });
+
+  // Issue #40: a run that failed without reporting has no `failed` count, so the
+  // old report-only definition called it a pass.
+  it("counts a run that failed without reporting", () => {
+    const results = sampleResults();
+    results.runs[0]!.report = null;
+    results.runs[0]!.status = "failed";
+    results.runs[0]!.lastError = "no image configured";
+
+    expect(hasTestingFailures(results)).toBe(true);
   });
 });
 
