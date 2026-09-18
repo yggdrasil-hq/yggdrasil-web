@@ -21,6 +21,7 @@ import {
   sessionAttentionLabel,
   sortDesignsByRecency,
 } from "@/src/features/designs";
+import { LoadFailure } from "@/components/ui/load-failure";
 
 type StatusFilter = DesignStatus | "all";
 
@@ -84,7 +85,7 @@ export function DesignsIndexClient({ projectId }: { projectId: string }) {
 
   if (error && !project) {
     return (
-      <div className="flex min-h-screen items-center justify-center text-red-400">{error}</div>
+      <LoadFailure message={error} subject="design" />
     );
   }
   if (!project) {

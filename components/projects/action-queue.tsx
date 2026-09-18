@@ -6,7 +6,6 @@ import { ArrowRight } from "lucide-react";
 import type { ActionQueueItem } from "@/lib/features/types";
 import { ACTION_QUEUE_LABELS } from "@/lib/features/statuses";
 import { appRoute } from "@/lib/config";
-import { Button } from "@/components/ui/button";
 import {
   Card,
   CardDescription,
@@ -53,9 +52,21 @@ export function ActionQueue({ items }: ActionQueueProps) {
                   {formatDistanceToNow(new Date(item.waitingSince), { addSuffix: true })}
                 </p>
               </div>
-              <Button variant="ghost" size="icon" aria-hidden>
+              {/*
+                A decorative arrow, not a control — and deliberately not the
+                `<Button>` this used to be. Nesting an interactive element inside
+                a link is invalid (`<button>` inside `<a>`), and because the
+                button also carried `aria-hidden` it was focusable while being
+                invisible to assistive tech: Tab landed on something unnamed.
+                The whole row is the link, so nothing is lost by drawing the
+                arrow as a span.
+              */}
+              <span
+                aria-hidden
+                className="inline-flex size-9 shrink-0 items-center justify-center rounded-md text-frost"
+              >
                 <ArrowRight className="size-4" />
-              </Button>
+              </span>
             </Link>
           </li>
         ))}

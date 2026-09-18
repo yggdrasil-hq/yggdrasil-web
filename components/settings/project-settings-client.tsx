@@ -685,6 +685,11 @@ export function ProjectSettingsClient({ projectId }: ProjectSettingsClientProps)
                       </div>
                       <Select
                         className="mt-3"
+                        // The `<span>` above is the visible label but is not
+                        // associated with this control, so it would otherwise
+                        // have no accessible name — five unnamed "combo boxes"
+                        // in a row, one per job kind.
+                        aria-label={`Model for ${AGENT_JOB_KIND_LABELS[jobKind]}`}
                         value={current?.modelId ?? ""}
                         disabled={savingOverride === jobKind}
                         onChange={(e) => void handleSelectOverride(jobKind, e.target.value)}

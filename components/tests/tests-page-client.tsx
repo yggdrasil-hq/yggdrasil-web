@@ -16,6 +16,7 @@ import { completeProjectInit, fetchProject, fetchTests } from "@/lib/api";
 import type { Project, Test } from "@/lib/features/types";
 import { appRoute } from "@/lib/config";
 import { presetLabel } from "@/lib/tests/schedules";
+import { LoadFailure } from "@/components/ui/load-failure";
 
 interface TestsPageClientProps {
   projectId: string;
@@ -73,9 +74,7 @@ export function TestsPageClient({ projectId }: TestsPageClientProps) {
 
   if (error && !project) {
     return (
-      <div className="flex min-h-screen items-center justify-center text-mist">
-        {error}
-      </div>
+      <LoadFailure message={error} subject="test" />
     );
   }
 

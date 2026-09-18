@@ -138,6 +138,11 @@ export function OrgMembersSettings() {
                     <div className="flex shrink-0 items-center gap-2">
                       <select
                         className="rounded-md border border-rime bg-surface-02 px-2 py-1 text-sm text-frost"
+                        // One select per member, all offering the same role
+                        // names — so a bare "Role" name would be ambiguous when
+                        // a screen reader lists the page's controls. Named for
+                        // the member it changes.
+                        aria-label={`Role for ${member.displayName}`}
                         value={member.role}
                         onChange={(e) =>
                           void changeOrgMemberRole(

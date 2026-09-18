@@ -18,6 +18,7 @@ import {
 } from "@/lib/features/usage";
 import { appRoute } from "@/lib/config";
 import { cn } from "@/lib/utils";
+import { LoadFailure } from "@/components/ui/load-failure";
 
 interface ProjectUsageClientProps {
   projectId: string;
@@ -34,27 +35,51 @@ interface ProjectUsageClientProps {
 export function ProjectUsageClient({ projectId }: ProjectUsageClientProps) {
   const [project, setProject] = useState<Project | null>(null);
   const [report, setReport] = useState<ProjectUsageReport | null>(null);
+  /*
+   * Two error slots, for the same reason as the analytics page next door: the
+   * project and the usage report fail independently, and only one of those
+   * failures means there is no page to render. A single `Promise.all` used to
+   * discard a project that had loaded perfectly well because the usage endpoint
+   * 404'd, leaving an un-shelled error with no sidebar and no way back.
+   */
   const [error, setError] = useState<string | null>(null);
+  const [reportError, setReportError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     let active = true;
 
     async function load() {
+      let projectData: Project;
       try {
-        const [projectData, usageData] = await Promise.all([
-          fetchProject(projectId),
-          fetchProjectUsage(projectId, USAGE_DEFAULT_DAYS),
-        ]);
-        if (active) {
-          setProject(projectData);
-          setReport(usageData);
-          setError(null);
-        }
+        projectData = await fetchProject(projectId);
       } catch (loadError) {
         if (active) {
           setError(
-            loadError instanceof Error ? loadError.message : "Failed to load usage",
+            loadError instanceof Error ? loadError.message : "Failed to load project",
+          );
+          setLoaded(true);
+        }
+        return;
+      }
+
+      if (active) {
+        setProject(projectData);
+        setError(null);
+      }
+
+      try {
+        const usageData = await fetchProjectUsage(projectId, USAGE_DEFAULT_DAYS);
+        if (active) {
+          setReport(usageData);
+          setReportError(null);
+        }
+      } catch (reportLoadError) {
+        if (active) {
+          setReportError(
+            reportLoadError instanceof Error
+              ? reportLoadError.message
+              : "Failed to load usage",
           );
         }
       } finally {
@@ -69,7 +94,7 @@ export function ProjectUsageClient({ projectId }: ProjectUsageClientProps) {
   }, [projectId]);
 
   if (error && !project) {
-    return <div className="flex min-h-screen items-center justify-center text-mist">{error}</div>;
+    return <LoadFailure message={error} subject="project" />
   }
 
   if (!project) {
@@ -103,9 +128,12 @@ export function ProjectUsageClient({ projectId }: ProjectUsageClientProps) {
             </p>
           </div>
 
-          {error && (
+          {/* The usage failure, not the project's — see the two error slots
+              above. Inline so the panels below still render and the message is
+              attributable to one thing rather than to the whole page. */}
+          {reportError && (
             <Alert variant="destructive" className="mb-6">
-              <AlertDescription>{error}</AlertDescription>
+              <AlertDescription>{reportError}</AlertDescription>
             </Alert>
           )}
 

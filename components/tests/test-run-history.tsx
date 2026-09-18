@@ -260,7 +260,15 @@ function RunDetail({
               </span>
               <span className="min-w-0 flex-1 text-frost">{step.name}</span>
               {step.details ? (
-                <span className="max-w-[50%] truncate text-xs text-shadow">
+                /*
+                  Wraps instead of truncating. This lives inside an expanded
+                  run's detail view, which the user opened precisely to read this
+                  — and the step details are a test runner's own words about what
+                  happened, with no other surface showing them. Truncating the
+                  only copy of the answer, inside the disclosure that exists to
+                  reveal it, left the user with an ellipsis and nowhere to look.
+                */
+                <span className="max-w-[50%] break-words text-xs text-shadow">
                   {step.details}
                 </span>
               ) : null}

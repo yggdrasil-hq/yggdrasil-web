@@ -53,6 +53,29 @@ export function couldNotRun(run: TestingRun): boolean {
 }
 
 /**
+ * A run that submitted a report which verified nothing.
+ *
+ * **Why this is its own state.** A `script_test_run` on an install with no
+ * runner image now submits a well-formed report saying so — zero passed, zero
+ * failed, one skipped — rather than dying without one. That report is accurate,
+ * but every existing signal reads it as a pass: `failed` is 0, so `runTone`
+ * says `pass`, so the row renders green and "Failed only" hides it. The page
+ * then contradicts itself, because the headline (correctly) says nothing was
+ * verified while the row underneath it looks like a clean run. Reproduced on
+ * the shipped Testing tab.
+ *
+ * The condition is "passed nothing **and** failed nothing", not `skipped > 0`:
+ * a suite that runs some tests and skips others has verified something, and
+ * calling that unverified would be its own lie. Only a report with no results
+ * at all in it is nothing.
+ */
+export function verifiedNothing(run: TestingRun): boolean {
+  if (!run.report) return false;
+  if (run.status === "pending" || run.status === "running") return false;
+  return run.report.passed === 0 && run.report.failed === 0;
+}
+
+/**
  * Whether this run is one the tab should show under "Failed only" and tint red.
  *
  * Wider than `runTone`'s `fail`, which is about how a *job* ended: a run that
@@ -62,7 +85,7 @@ export function couldNotRun(run: TestingRun): boolean {
  * broke the pipeline was invisible in "failed only").
  */
 export function isFailingRun(run: TestingRun): boolean {
-  return runTone(run) === "fail" || couldNotRun(run);
+  return runTone(run) === "fail" || couldNotRun(run) || verifiedNothing(run);
 }
 
 export interface TestingTally {
@@ -75,6 +98,12 @@ export interface TestingTally {
   reported: number;
   /** Runs that ended without one — counted nowhere above, and not a pass. */
   notReported: number;
+  /**
+   * Runs that reported and verified nothing (all skips). Counted separately
+   * from `notReported` because the fix is different: this one is a *decision*
+   * the installation made, and the report says which.
+   */
+  unverified: number;
   /** Runs that ended in `failed`/`cancelled`, or whose report recorded failures. */
   failingRuns: number;
   /** Runs still going. */
@@ -90,6 +119,7 @@ export function tallyRuns(runs: TestingRun[]): TestingTally {
     total: 0,
     reported: 0,
     notReported: 0,
+    unverified: 0,
     failingRuns: 0,
     inFlight: 0,
     runs: runs.length,
@@ -105,6 +135,10 @@ export function tallyRuns(runs: TestingRun[]): TestingTally {
       tally.failed += counts.failed;
       tally.skipped += counts.skipped;
       tally.total += counts.total;
+      // Checked inside this branch, not after it: a run that reported only
+      // skips *has* a report, so it takes the counts path above and would never
+      // reach a later `else if`.
+      if (verifiedNothing(run)) tally.unverified += 1;
     } else if (couldNotRun(run)) {
       tally.notReported += 1;
     }
@@ -133,6 +167,11 @@ export function tallyLine(tally: TestingTally): string {
   // code. Both are counted, neither is hidden.
   if (tally.notReported > 0) {
     parts.push(`${tally.notReported} could not run`);
+  }
+  // "skipped" is already in the counts above, so this reads as "of which, none
+  // were results" rather than as a second skip tally.
+  if (tally.unverified > 0) {
+    parts.push(`${tally.unverified} verified nothing`);
   }
   return parts.join(" · ");
 }
@@ -181,9 +220,34 @@ export function testingHeadline(
   if (tally.notReported > 0) {
     const groups =
       tally.notReported === 1 ? "A test group" : `${tally.notReported} test groups`;
+    const alsoUnverified =
+      tally.unverified > 0
+        ? ` ${tally.unverified === 1 ? "Another group" : `${tally.unverified} other groups`} reported only skips.`
+        : "";
     return {
       tone: "fail",
-      message: `${groups} could not run, so nothing was verified. The feature is marked failed rather than sent back — this is an environment problem, not a code one. Open the run below for the reason.`,
+      message: `${groups} could not run, so nothing was verified. The feature is marked failed rather than sent back — this is an environment problem, not a code one. Open the run below for the reason.${alsoUnverified}`,
+    };
+  }
+  // `total` counts skipped tests too, so "nothing here is a result" has to be
+  // tested against the counts that are results — an all-skips report has
+  // `total: 1` and would slip past a `total === 0` check into the pass branch.
+  if (tally.unverified > 0 && tally.passed + tally.failed === 0) {
+    // Every run reported only skips. Saying "all 0 assertions passed" here is
+    // the one wrong answer that costs the most, so this is its own message.
+    const groups =
+      tally.unverified === 1 ? "This test group" : `All ${tally.unverified} test groups`;
+    return {
+      tone: "fail",
+      message: `${groups} reported only skips, so nothing was verified. That is a decision this installation made rather than a result about the code — open a run below to see which.`,
+    };
+  }
+  if (tally.unverified > 0) {
+    // Some groups verified something, others did not: a pass with a caveat
+    // rather than a pass, because the caveat is what a reader needs.
+    return {
+      tone: "pass",
+      message: `${tally.passed} assertion${tally.passed === 1 ? "" : "s"} passed, but ${tally.unverified === 1 ? "1 test group" : `${tally.unverified} test groups`} reported only skips and verified nothing.`,
     };
   }
   return {
@@ -207,6 +271,16 @@ export function runFailureReason(run: TestingRun): string | null {
     const summary = run.report.summary.trim();
     if (summary) return summary;
     return `${run.report.failed} failing assertion${run.report.failed === 1 ? "" : "s"}`;
+  }
+
+  // A report that verified nothing is now tinted like a failure (it is one for
+  // the stage, even though no job failed), so it has to say why — otherwise the
+  // row is red with no explanation, which is the defect this whole module is
+  // about in a new costume. The runner's own summary carries the reason.
+  if (run.report && verifiedNothing(run)) {
+    const summary = run.report.summary.trim();
+    if (summary) return summary;
+    return `${run.report.skipped} test${run.report.skipped === 1 ? " was" : "s were"} skipped and nothing was run.`;
   }
 
   if (run.report) return null;

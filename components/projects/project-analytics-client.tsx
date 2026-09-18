@@ -24,6 +24,7 @@ import {
 } from "@/lib/features/usage";
 import { appRoute } from "@/lib/config";
 import { cn } from "@/lib/utils";
+import { LoadFailure } from "@/components/ui/load-failure";
 
 interface ProjectAnalyticsClientProps {
   projectId: string;
@@ -39,26 +40,54 @@ interface ProjectAnalyticsClientProps {
 export function ProjectAnalyticsClient({ projectId }: ProjectAnalyticsClientProps) {
   const [project, setProject] = useState<Project | null>(null);
   const [report, setReport] = useState<ProjectAnalyticsReport | null>(null);
+  /*
+   * Two error slots rather than one, because the two fetches fail for
+   * completely different reasons and the page must react differently:
+   *
+   * - the project failing means there is no page to render at all — a deleted
+   *   project, or one this account cannot see — and that is a genuine dead end.
+   * - the analytics failing means the page is fine and one panel is missing.
+   *   Before this split both were one `Promise.all`, so an analytics failure
+   *   discarded the project too and the page rendered an un-shelled error with
+   *   no navigation — reproduced against the real stack when the endpoint was
+   *   404ing. The project fetch had succeeded; the page threw it away.
+   */
   const [error, setError] = useState<string | null>(null);
+  const [reportError, setReportError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
 
     async function load() {
+      let projectData: Project;
       try {
-        const [projectData, analyticsData] = await Promise.all([
-          fetchProject(projectId),
-          fetchProjectAnalytics(projectId, USAGE_DEFAULT_DAYS),
-        ]);
-        if (active) {
-          setProject(projectData);
-          setReport(analyticsData);
-          setError(null);
-        }
+        projectData = await fetchProject(projectId);
       } catch (loadError) {
         if (active) {
           setError(
-            loadError instanceof Error ? loadError.message : "Failed to load analytics",
+            loadError instanceof Error ? loadError.message : "Failed to load project",
+          );
+        }
+        return;
+      }
+
+      if (active) {
+        setProject(projectData);
+        setError(null);
+      }
+
+      try {
+        const analyticsData = await fetchProjectAnalytics(projectId, USAGE_DEFAULT_DAYS);
+        if (active) {
+          setReport(analyticsData);
+          setReportError(null);
+        }
+      } catch (reportLoadError) {
+        if (active) {
+          setReportError(
+            reportLoadError instanceof Error
+              ? reportLoadError.message
+              : "Failed to load analytics",
           );
         }
       }
@@ -71,7 +100,7 @@ export function ProjectAnalyticsClient({ projectId }: ProjectAnalyticsClientProp
   }, [projectId]);
 
   if (error && !project) {
-    return <div className="flex min-h-screen items-center justify-center text-mist">{error}</div>;
+    return <LoadFailure message={error} subject="project" />
   }
 
   if (!project) {
@@ -97,9 +126,16 @@ export function ProjectAnalyticsClient({ projectId }: ProjectAnalyticsClientProp
 
       <main className="flex-1 px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
         <div className="mx-auto max-w-content">
-          {error && (
+          {/*
+            Only the analytics failure is shown here — the project failing is
+            what `LoadFailure` above is for, and by this point it has loaded.
+            Rendered as an inline alert rather than a dead end so the panels
+            below still appear, and so the message is attributable to one panel
+            instead of to the page.
+          */}
+          {reportError && (
             <Alert variant="destructive" className="mb-6">
-              <AlertDescription>{error}</AlertDescription>
+              <AlertDescription>{reportError}</AlertDescription>
             </Alert>
           )}
 

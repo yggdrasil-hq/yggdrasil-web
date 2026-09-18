@@ -268,6 +268,12 @@ export function FeatureModelConfigClient() {
                 </p>
                 <Select
                   className="mt-3"
+                  // The visible label is the `<span>` above, which is not
+                  // programmatically associated with this control — so without
+                  // this the picker has no accessible name at all and a screen
+                  // reader announces five identical "combo box" entries on this
+                  // page. Named from the same label the sighted user reads.
+                  aria-label={`Model for ${AGENT_JOB_KIND_LABELS[jobKind]}`}
                   value={current?.modelId ?? ""}
                   disabled={savingOverride === jobKind || !pickerEnabled}
                   onChange={(e) => void handleSelectOverride(jobKind, e.target.value)}
