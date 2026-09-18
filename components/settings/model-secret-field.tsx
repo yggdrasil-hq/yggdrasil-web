@@ -127,6 +127,15 @@ export function ModelSecretField({
             onChange={(event) => setValue(event.target.value)}
             placeholder={placeholder}
             autoComplete="off"
+            /*
+             * The label above this renders as a `<p>`, which is visible text a
+             * screen reader never associates with the field — so the edit box
+             * itself has no accessible name. `aria-label` rather than an
+             * `id`/`htmlFor` pair because this component renders several times
+             * per page (one per model field), and hand-written ids would have to
+             * be made unique by every caller to stay valid.
+             */
+            aria-label={label}
           />
           <div className="flex flex-wrap gap-2">
             <Button type="button" size="sm" disabled={saving} onClick={() => void handleSave()}>

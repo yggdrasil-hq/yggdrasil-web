@@ -124,6 +124,7 @@ export function FeaturesPageClient({ projectId }: FeaturesPageClientProps) {
                   value={newTitle}
                   onChange={(event) => setNewTitle(event.target.value)}
                   placeholder="Feature title"
+                  aria-label="Feature title"
                   onKeyDown={(event) => {
                     if (event.key === "Enter") void handleCreateFeature();
                   }}
