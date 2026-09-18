@@ -14,6 +14,7 @@ import {
   TEST_SCHEDULE_PRESETS,
   type TestSchedulePresetId,
   cronToPresetId,
+  describeCustomCronUtc,
 } from "@/lib/tests/schedules";
 
 interface TestFormProps {
@@ -108,7 +109,12 @@ export function TestForm({
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Schedule</CardTitle>
-          <CardDescription>Minimum interval is 1 hour.</CardDescription>
+          {/*
+           * Says the zone up front as well as under the field: the presets name
+           * UTC in their own labels, and a user reading only this card's
+           * description should still learn which clock applies.
+           */}
+          <CardDescription>Evaluated in UTC. Minimum interval is 1 hour.</CardDescription>
         </CardHeader>
         <div className="space-y-4 px-4 pb-4">
           <select
@@ -128,13 +134,30 @@ export function TestForm({
           </select>
 
           {presetId === "custom" ? (
-            <Input
-              value={customCron}
-              onChange={(event) => setCustomCron(event.target.value)}
-              placeholder="0 9 * * *"
-              aria-label="Custom cron expression"
-              required
-            />
+            <div className="space-y-1">
+              <Input
+                value={customCron}
+                onChange={(event) => setCustomCron(event.target.value)}
+                placeholder="0 9 * * *"
+                aria-label="Custom cron expression"
+                required
+              />
+              {/*
+               * Issue #31: the presets name UTC (see `TEST_SCHEDULE_PRESETS`),
+               * but the free-text path did not — so this field was the one place
+               * a user configured a schedule with no statement of which clock it
+               * is read against. The per-project timezone setting that would let
+               * them choose a zone does not exist yet; saying plainly what the
+               * current behaviour is does not depend on it, and leaving it
+               * unsaid is what makes "every night at 2am" silently wrong.
+               *
+               * `aria-live` is inherited by nothing here, so this is plain text
+               * beside the field rather than a status region: it changes as the
+               * user types, and announcing every keystroke's interpretation
+               * would be noise. It is reachable as a description by proximity.
+               */}
+              <p className="text-xs text-shadow">{describeCustomCronUtc(customCron)}</p>
+            </div>
           ) : null}
         </div>
       </Card>

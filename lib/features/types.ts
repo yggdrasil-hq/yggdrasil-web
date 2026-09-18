@@ -710,15 +710,88 @@ export interface AgenticReviewFinding {
   blocking: boolean;
 }
 
+/**
+ * What the Agentic Review stage renders (ADR 015 items 13-16).
+ *
+ * **Deliberately not the wire shape** — that is `AgenticReviewResponse`, below,
+ * and `agenticReviewFromResponse` in `./agentic-review` is the one place that
+ * maps between them. Keeping the panel's model separate buys two things: the
+ * panel keeps rendering the shape it already renders, and "the endpoint changed
+ * a field name" becomes a one-line mapper change with a unit test rather than a
+ * rename spread through JSX.
+ *
+ * There is no `featureId` here, unlike before. The endpoint does not return one
+ * (the feature is in the path it was requested by), nothing rendered it, and the
+ * mapper would have had to invent a value to satisfy the type — a field that can
+ * only ever be fabricated is worse than no field.
+ */
 export interface AgenticReview {
-  featureId: string;
   /**
-   * The review's terminal verdict. `null` = the stage ran but no final
-   * verdict was relayed yet (still in flight).
+   * The review's terminal verdict. Non-null only: a review with no verdict is
+   * "no review yet" and is represented as a `null` review, not as a review with
+   * a null verdict. That distinction is the whole point — see
+   * `agenticReviewFromResponse` for why conflating them rendered
+   * "Changes requested" for a review that had not happened.
    */
-  verdict: AgenticReviewVerdict | null;
+  verdict: AgenticReviewVerdict;
+  /**
+   * The review's own summary sentence, shown beside the verdict. Named `comment`
+   * on this side and `summary` on the wire; the mapper is the only thing that
+   * needs to know both spellings.
+   */
   comment: string | null;
   findings: AgenticReviewFinding[];
+  /**
+   * The `agentic_review` job this verdict came from, and when it finished.
+   * Null on a response that predates the endpoint returning them — the panel
+   * omits the line rather than inventing a time.
+   */
+  jobId: string | null;
+  completedAt: string | null;
+}
+
+/**
+ * One review comment, as the API returns it.
+ *
+ * `path`/`line` locate it in the diff, and both are nullable because a review
+ * can carry a comment about the change as a whole rather than a specific line.
+ *
+ * `blocking` is **optional on purpose**: the endpoint contract does not require
+ * it, and the issue that specified the endpoint described the comments
+ * themselves as the blocking flags. Treating a missing `blocking` as `true`
+ * (rather than as `false`) is the safe reading — a review comment that silences
+ * a gate is worse than one that draws attention it did not strictly need — and
+ * it means an endpoint that starts sending the field later needs no client
+ * change.
+ */
+export interface AgenticReviewComment {
+  path: string | null;
+  line: number | null;
+  body: string;
+  blocking?: boolean;
+}
+
+/**
+ * `GET /projects/:projectId/features/:featureId/agentic-review`.
+ *
+ * `verdict: null` with a **200** means the stage has not produced a verdict yet.
+ * That is explicitly not an error — a 404 or a 5xx is — which is what lets the
+ * panel show an honest empty state instead of a failure.
+ */
+export interface AgenticReviewResponse {
+  verdict: AgenticReviewVerdict | null;
+  summary: string | null;
+  comments: AgenticReviewComment[];
+  jobId: string | null;
+  completedAt: string | null;
+  /**
+   * Present only on responses from before the endpoint existed, whose shape this
+   * app already renders (the MSW mock still produces it). Accepted so the mapper
+   * can serve both rather than the client breaking when the two disagree — see
+   * `agenticReviewFromResponse`.
+   */
+  findings?: AgenticReviewFinding[];
+  comment?: string | null;
 }
 
 // --- Usage / analytics reporting (ADR 023) ---
@@ -862,7 +935,12 @@ export interface TestRunHistoryEntry {
   jobId: string;
   testId: string;
   status: JobStatus;
-  trigger: "feature" | "schedule" | null;
+  /**
+   * What dispatched the run. `"manual"` is issue #31's on-demand run — its own
+   * value rather than a null, because "a person pressed Run" and "we do not know"
+   * are different things and the history should say which.
+   */
+  trigger: "feature" | "schedule" | "manual" | null;
   testGroup: "unit" | "integration" | null;
   ref: string | null;
   createdAt: string;

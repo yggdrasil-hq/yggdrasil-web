@@ -1,5 +1,6 @@
 import { apiUrl } from "@/lib/config";
 import { formatApiError } from "@/lib/features/load-errors";
+import { agenticReviewFromResponse } from "@/lib/features/agentic-review";
 import { LISTING_NEEDS_ADMIN } from "@/lib/features/model-catalog";
 import type {
   AgentJobKind,
@@ -50,6 +51,7 @@ import type {
   TestRunsResponse,
   TokenCapState,
   AgenticReview,
+  AgenticReviewResponse,
   TestingResults,
   OrganizationAnalyticsReport,
   OrganizationUsageReport,
@@ -929,6 +931,30 @@ export async function updateTest(
   return parseJson<Test>(response);
 }
 
+/**
+ * Issue #31 (ADR 026 follow-up 4): dispatch this test now instead of waiting for
+ * its schedule.
+ *
+ * Returns the new job id so the caller can refresh the right thing. Throws on
+ * failure like every other mutating call, and the two failures worth naming are
+ * both **409**: a run already in progress, and a project that has not finished
+ * initialization. `parseJson` puts the API's own sentence into the message
+ * (`"This test already has a run in progress (API error: 409 Conflict)"`), so
+ * `describeTriggerRunFailure` can surface it — the caller must not reduce that to
+ * a generic "something went wrong", because the sentence is the entire value of
+ * the 409.
+ */
+export async function triggerTestRun(
+  projectId: string,
+  testId: string,
+): Promise<{ jobId: string }> {
+  const response = await fetch(apiUrl(`/projects/${projectId}/tests/${testId}/run`), {
+    method: "POST",
+    credentials: "include",
+  });
+  return parseJson<{ jobId: string }>(response);
+}
+
 export async function fetchNotifications(): Promise<NotificationsResponse> {
   const response = await fetch(apiUrl("/notifications"), {
     cache: "no-store",
@@ -1354,8 +1380,17 @@ export async function fetchFeatureTestingResults(
 }
 
 /**
- * The Agentic Review stage's verdict + findings for a feature (B6). Returns
- * `null` when the stage hasn't produced a result yet.
+ * The Agentic Review stage's verdict + comments for a feature (B6).
+ *
+ * Returns `null` for "no review yet" rather than an object with a null verdict —
+ * the endpoint answers `200 {verdict: null}` for that case, and the mapper
+ * (`agenticReviewFromResponse`) is what turns it into the empty state. A thrown
+ * error here therefore means a genuinely failed request, which is the distinction
+ * this function could not make before: it used to 404, and the panel reported the
+ * *failure* for both cases.
+ *
+ * The mapping happens here rather than in the panel so the wire shape is named in
+ * exactly one place, next to the type that documents it.
  */
 export async function fetchFeatureAgenticReview(
   projectId: string,
@@ -1365,7 +1400,9 @@ export async function fetchFeatureAgenticReview(
     apiUrl(`/projects/${projectId}/features/${featureId}/agentic-review`),
     { cache: "no-store", credentials: "include" },
   );
-  return parseJson<AgenticReview | null>(response);
+  return agenticReviewFromResponse(
+    await parseJson<AgenticReviewResponse | null>(response),
+  );
 }
 
 // --- Usage / analytics reporting (ADR 023) ---

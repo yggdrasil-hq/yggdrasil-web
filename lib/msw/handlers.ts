@@ -785,6 +785,33 @@ export const handlers = [
     },
   ),
 
+  /*
+   * Issue #31's on-demand run. Modelled on the real endpoint's two refusals rather
+   * than only its success — a handler that always succeeds would let a UI relying
+   * on the 409s look correct here and fail against the API, which is the class of
+   * gap #64 exists to prevent.
+   */
+  http.post(apiUrl("/projects/:projectId/tests/:testId/run"), ({ params }) => {
+    const project = getMockProject(String(params.projectId));
+    if (!project) {
+      return HttpResponse.json({ error: "Project not found" }, { status: 404 });
+    }
+
+    const test = getMockTest(String(params.projectId), String(params.testId));
+    if (!test) {
+      return HttpResponse.json({ error: "Test not found" }, { status: 404 });
+    }
+
+    if (project.status !== "ready") {
+      return HttpResponse.json(
+        { error: "Project initialization must complete before running tests" },
+        { status: 409 },
+      );
+    }
+
+    return HttpResponse.json({ jobId: `job_manual_${Date.now()}` }, { status: 201 });
+  }),
+
   http.get(apiUrl("/notifications"), () => {
     const unreadCount = mockNotifications.filter((item) => !item.readAt).length;
     return HttpResponse.json({ notifications: mockNotifications, unreadCount });

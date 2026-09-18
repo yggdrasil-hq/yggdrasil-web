@@ -13,10 +13,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { fetchProject, fetchTest, updateTest } from "@/lib/api";
+import { fetchProject, fetchTest, triggerTestRun, updateTest } from "@/lib/api";
 import type { Project, Test } from "@/lib/features/types";
 import { appRoute } from "@/lib/config";
-import { presetLabel } from "@/lib/tests/schedules";
+import { cronToPresetId, describeCustomCronUtc, presetLabel } from "@/lib/tests/schedules";
+import { describeTriggerRunFailure } from "@/lib/features/test-runs";
 import { LoadFailure } from "@/components/ui/load-failure";
 
 interface TestDetailClientProps {
@@ -30,6 +31,26 @@ export function TestDetailClient({ projectId, testId }: TestDetailClientProps) {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  /**
+   * Issue #31: the manual-run trigger.
+   *
+   * `runFeedback` is one slot for both outcomes rather than two booleans, because
+   * only one of them can be true and the UI shows one line — a refusal and a
+   * success cannot coexist, and modelling them as independent state invites the
+   * state where neither is cleared.
+   */
+  const [runningNow, setRunningNow] = useState(false);
+  const [runFeedback, setRunFeedback] = useState<
+    { kind: "ok" | "error"; message: string } | null
+  >(null);
+  /**
+   * Bumped after a successful dispatch so `TestRunHistory` refetches.
+   *
+   * Its own key rather than reusing `test.updatedAt`: a manual run does not touch
+   * the test row at all (the API only creates a job), so `test.updatedAt` would
+   * not change and the new run would not appear until something else did.
+   */
+  const [historyKey, setHistoryKey] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -80,6 +101,35 @@ export function TestDetailClient({ projectId, testId }: TestDetailClientProps) {
     }
   }
 
+  async function handleRunNow() {
+    setRunningNow(true);
+    setRunFeedback(null);
+    try {
+      const { jobId } = await triggerTestRun(projectId, testId);
+      setRunFeedback({
+        kind: "ok",
+        // No "job " prefix: API job ids already read `job_…`, so prefixing one
+        // produced "job job_manu". The short form is shown because a full UUID is
+        // noise in a one-line status, and the history below is where the run is
+        // actually identified.
+        message: `Run queued (${jobId.slice(0, 12)}) — it will appear in the history below as it starts.`,
+      });
+      setHistoryKey((key) => key + 1);
+    } catch (runError) {
+      // The API's own sentence is the useful part for both 409s — "already has a
+      // run in progress" and "initialization must complete" each say what to do,
+      // so it is surfaced rather than replaced with a generic failure line.
+      setRunFeedback({
+        kind: "error",
+        message: describeTriggerRunFailure(
+          runError instanceof Error ? runError.message : "Failed to start the run",
+        ),
+      });
+    } finally {
+      setRunningNow(false);
+    }
+  }
+
   if (error && !test) {
     return (
       <LoadFailure message={error} subject="test" />
@@ -120,16 +170,79 @@ export function TestDetailClient({ projectId, testId }: TestDetailClientProps) {
         <div className="mx-auto max-w-content space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Run status</CardTitle>
-              <CardDescription>
-                Schedule: {presetLabel(test.scheduleCron)}
-              </CardDescription>
-              <CardDescription>
-                {test.lastRunAt
-                  ? `Schedule last fired ${formatDistanceToNow(new Date(test.lastRunAt), { addSuffix: true })}`
-                  : "No scheduled run yet — the next scheduled window will dispatch one."}
-              </CardDescription>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <CardTitle className="text-base">Run status</CardTitle>
+                  <CardDescription>
+                    Schedule: {presetLabel(test.scheduleCron)}
+                  </CardDescription>
+                  {/*
+                   * Issue #31: the custom-expression path had no zone shown at
+                   * all, so a user typing `0 2 * * *` could not tell that the
+                   * scheduler reads it as UTC. The presets already name their
+                   * zone; this makes the free-text path say the same thing in
+                   * words, which is the most that can be done before the
+                   * per-project timezone setting exists.
+                   */}
+                  {cronToPresetId(test.scheduleCron) === "custom" ? (
+                    <CardDescription>
+                      {describeCustomCronUtc(test.scheduleCron)}
+                    </CardDescription>
+                  ) : null}
+                  <CardDescription>
+                    {/*
+                     * Deliberately unchanged by a manual run: `last_run_at` is the
+                     * scheduler's own bookkeeping (ADR 026 §7), and a manual run
+                     * must not shift the next scheduled window. Saying "schedule
+                     * last fired" rather than "last run" is what keeps that
+                     * honest, so this line stays as it is while the history below
+                     * gains a row.
+                     */}
+                    {test.lastRunAt
+                      ? `Schedule last fired ${formatDistanceToNow(new Date(test.lastRunAt), { addSuffix: true })}`
+                      : "No scheduled run yet — the next scheduled window will dispatch one."}
+                  </CardDescription>
+                </div>
+                {/*
+                 * Offered even while the test is paused: `enabled` governs the
+                 * *schedule* ("run on schedule when checked"), and a paused suite
+                 * is exactly the one a user wants to try once before re-enabling
+                 * it. The API applies no `enabled` check here either, so gating the
+                 * button would make the UI stricter than the endpoint for no
+                 * stated reason.
+                 */}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={runningNow}
+                  onClick={() => void handleRunNow()}
+                >
+                  {runningNow ? "Starting…" : "Run now"}
+                </Button>
+              </div>
             </CardHeader>
+            {runFeedback ? (
+              <div className="px-4 pb-4">
+                <p
+                  className={
+                    runFeedback.kind === "ok"
+                      ? "text-sm text-emerald-300"
+                      : "text-sm text-red-400"
+                  }
+                  /*
+                   * `role="status"` so the outcome is announced rather than only
+                   * appearing: pressing Run now does not move focus, and for a
+                   * screen-reader user an unannounced line of text is a silent
+                   * no-op. Polite rather than assertive — a queued run is not an
+                   * emergency, and interrupting mid-sentence would be the wrong
+                   * register for a success message.
+                   */
+                  role="status"
+                >
+                  {runFeedback.message}
+                </p>
+              </div>
+            ) : null}
           </Card>
 
           <TestForm
@@ -154,7 +267,7 @@ export function TestDetailClient({ projectId, testId }: TestDetailClientProps) {
             projectId={projectId}
             testId={testId}
             testEnabled={test.enabled}
-            refreshKey={test.updatedAt}
+            refreshKey={`${test.updatedAt}:${historyKey}`}
           />
         </div>
       </main>

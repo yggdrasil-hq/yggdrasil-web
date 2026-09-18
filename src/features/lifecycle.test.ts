@@ -103,13 +103,14 @@ describe("formatDuration", () => {
 describe("agenticReviewToView", () => {
   it("counts blocking findings and derives the verdict", () => {
     const review: AgenticReview = {
-      featureId: "feat_x",
       verdict: "changes_requested",
       comment: null,
       findings: [
         { location: "a.ts:1", note: "n", blocking: true },
         { location: "b.ts:2", note: "n", blocking: false },
       ],
+      jobId: null,
+      completedAt: null,
     };
     const view = agenticReviewToView(review);
     expect(view.verdict).toBe("changes_requested");

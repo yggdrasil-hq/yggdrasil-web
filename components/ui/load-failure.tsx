@@ -12,6 +12,12 @@ interface LoadFailureProps {
   message: string;
   /** What could not be loaded, so the heading can name it. */
   subject?: "project" | "feature" | "test" | "design" | "page";
+  /**
+   * `"page"` (the default) fills the viewport for a route whose data failed.
+   * `"panel"` is the same copy and the same retry policy inside a block on a
+   * page that already rendered — see below.
+   */
+  variant?: "page" | "panel";
 }
 
 /**
@@ -41,10 +47,52 @@ interface LoadFailureProps {
  * loaders out of their effects for a button on an error page. A reload re-runs
  * exactly the code that failed, which is what "try again" means here, and there
  * is no client state on this screen worth preserving.
+ *
+ * **Why there is a `panel` variant (issue #59).** A single stage panel can fail on
+ * its own while the page around it loaded fine — the Agentic Review tab is the
+ * case that prompted this. There, the app shell, the feature header and the stage
+ * nav are all present and correct, so `min-h-screen` centring would shove the
+ * broken sub-section's message into the middle of a page that is otherwise fine,
+ * and the "Back to projects" link would duplicate navigation the user already
+ * has. The *copy* and the retry decision should not fork for that reason, which is
+ * why this is a variant of one component rather than a second component: two
+ * implementations is how the two treatments drift and one of them stops being
+ * updated.
  */
-export function LoadFailure({ message, subject = "page" }: LoadFailureProps) {
+export function LoadFailure({
+  message,
+  subject = "page",
+  variant = "page",
+}: LoadFailureProps) {
   const copy = describeLoadFailure(message, subject);
   const retryable = isRetryable(message);
+
+  if (variant === "panel") {
+    return (
+      <div className="rounded-md border border-status-input/30 bg-status-input/5 px-4 py-3">
+        <div className="flex items-center gap-2">
+          <AlertTriangle className="size-4 shrink-0 text-status-input" aria-hidden />
+          <h3 className="text-sm font-medium text-frost">{copy.title}</h3>
+        </div>
+        <p className="mt-1 text-sm leading-relaxed text-mist">{copy.detail}</p>
+        {retryable ? (
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-3"
+            onClick={() => window.location.reload()}
+          >
+            Try again
+          </Button>
+        ) : null}
+        {/* Same rule as the page variant: the raw text is the only thing an
+            operator can search for, so it stays when the copy replaced it. */}
+        {copy.recognised ? (
+          <p className="mt-2 break-words font-mono text-xs text-shadow">{message}</p>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-4 px-6 py-12 text-center">

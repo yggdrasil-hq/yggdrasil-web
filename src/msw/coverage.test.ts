@@ -171,7 +171,7 @@ describe("the repo's own mock coverage (#64)", () => {
     expect({
       called: coverage.called.length,
       handled: coverage.handled.length,
-    }).toEqual({ called: 85, handled: 49 });
+    }).toEqual({ called: 86, handled: 50 });
   });
 
   /**

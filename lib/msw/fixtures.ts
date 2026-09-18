@@ -2,7 +2,7 @@ import { getFeatureBucket } from "@/lib/features/statuses";
 import { hasFullModelConfigBundle, ORG_ROLE_LABELS } from "@/lib/features/types";
 import type {
   ActionQueueItem,
-  AgenticReview,
+  AgenticReviewResponse,
   DeployHistoryResponse,
   DeployKind,
   DeployStatus,
@@ -1080,32 +1080,52 @@ export function getMockTestingResults(
 
 // --- Agentic Review results (ADR 015 items 13-16 / B6) ---
 
-const mockAgenticReviews: Record<string, AgenticReview> = {
+/**
+ * The Agentic Review endpoint's response, in the **wire shape** the API returns
+ * (`AgenticReviewResponse`) — not the shape the panel renders, which it used to
+ * be. Issue #59 moved this onto the endpoint's shape so the mock stops being a
+ * second, divergent source of the same response: the mapper in
+ * `lib/features/agentic-review.ts` turns one into the other, and it is unit
+ * tested against both, so the two cannot silently disagree.
+ *
+ * feat_010 (status: agentic_review) carries one blocking comment, one
+ * non-blocking one, and one with no location — so all three renderings the panel
+ * has (blocking tint, plain, "General comment") stay exercised through the mock.
+ */
+const mockAgenticReviews: Record<string, AgenticReviewResponse> = {
   // feat_010 (status: agentic_review) defaults to a changes_requested verdict.
   feat_010: {
-    featureId: "feat_010",
     verdict: "changes_requested",
-    comment: "1 blocking finding — sent back to implementation.",
-    findings: [
+    summary: "1 blocking finding — sent back to implementation.",
+    comments: [
       {
-        location: "lib/export-csv.ts:18",
-        note:
+        path: "lib/export-csv.ts",
+        line: 18,
+        body:
           "Column selection doesn't validate against the customer schema before emitting the header row — will produce malformed CSV for unknown columns.",
         blocking: true,
       },
       {
-        location: "app/customers/export.tsx:42",
-        note: "Nit: consider memoizing the column picker — not blocking.",
+        path: "app/customers/export.tsx",
+        line: 42,
+        body: "Nit: consider memoizing the column picker — not blocking.",
         blocking: false,
       },
+      {
+        path: null,
+        line: null,
+        body: "The change is otherwise consistent with the ADR.",
+      },
     ],
+    jobId: "job_review_010",
+    completedAt: new Date().toISOString(),
   },
 };
 
 export function getMockAgenticReview(
   projectId: string,
   featureId: string,
-): AgenticReview | null {
+): AgenticReviewResponse | null {
   void projectId;
   return mockAgenticReviews[featureId] ?? null;
 }
