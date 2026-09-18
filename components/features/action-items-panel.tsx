@@ -181,6 +181,7 @@ export function ActionItemsPanel({
                         }))
                       }
                       placeholder="Test name"
+                      aria-label="Test name"
                     />
                     <Input
                       value={testInputs[item.id]?.scheduleCron ?? "0 0 * * *"}
@@ -194,6 +195,7 @@ export function ActionItemsPanel({
                         }))
                       }
                       placeholder="Cron schedule"
+                      aria-label="Test schedule (cron expression)"
                     />
                     <Button variant="outline" size="sm" onClick={() => void createTest(item)}>
                       Create test

@@ -70,13 +70,26 @@ export function OrgSecretsSettings() {
         <div className="space-y-3 px-4 pb-4">
           {message ? <p className="text-sm text-mist">{message}</p> : null}
           <div className="flex gap-3">
+            {/*
+             * Both inputs are labelled for assistive tech only — the placeholder
+             * is not an accessible name, and this row is composed for the eye
+             * (a key beside its value) so a visible label on each would break the
+             * pairing it is expressing. Same choice as the sibling settings
+             * pages, which use `aria-label` on their unlabelled-row inputs
+             * (`org-providers-settings.tsx`). "Key"/"Value" rather than the
+             * visible placeholders because a screen reader reads the label, not
+             * the example, and "Value" alone would be meaningless read aloud
+             * without saying of what.
+             */}
             <Input
               placeholder="KEY_NAME"
+              aria-label="Secret key name"
               value={key}
               onChange={(e) => setKey(e.target.value)}
             />
             <Input
               placeholder="Value"
+              aria-label="Secret value"
               value={value}
               onChange={(e) => setValue(e.target.value)}
             />
@@ -93,9 +106,13 @@ export function OrgSecretsSettings() {
                   className="flex items-center justify-between rounded-md border border-rime px-3 py-2"
                 >
                   <span className="font-mono text-sm text-frost">{secret.key}</span>
+                  {/* Named per row: several of these render at once, so a bare
+                      "Delete" is ambiguous read out of context — a screen-reader
+                      user hears the same label for every one of them. */}
                   <Button
                     variant="ghost"
                     size="sm"
+                    aria-label={`Delete ${secret.key}`}
                     onClick={() => void deleteOrganizationSecret(orgParam, secret.id).then(load)}
                   >
                     Delete
