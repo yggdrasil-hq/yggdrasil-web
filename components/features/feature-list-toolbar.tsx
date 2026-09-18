@@ -41,13 +41,21 @@ export function FeatureListToolbar({
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-shadow" />
+          <Search
+            aria-hidden
+            className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-shadow"
+          />
           <Input
             value={query.search}
             onChange={(event) =>
               onQueryChange({ ...query, search: event.target.value })
             }
             placeholder="Search features…"
+            // A placeholder is not an accessible name — it disappears as soon
+            // as the field has content, and it is not exposed as a label. The
+            // magnifier beside it is decorative, so the name has to come from
+            // here.
+            aria-label="Search features"
             className="pl-9"
           />
         </div>

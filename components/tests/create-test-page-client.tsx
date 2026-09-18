@@ -10,6 +10,7 @@ import { createTest, fetchProject } from "@/lib/api";
 import type { Project } from "@/lib/features/types";
 import { appRoute } from "@/lib/config";
 import { DEFAULT_TEST_SPEC } from "@/lib/tests/schedules";
+import { LoadFailure } from "@/components/ui/load-failure";
 
 interface CreateTestPageClientProps {
   projectId: string;
@@ -68,9 +69,7 @@ export function CreateTestPageClient({ projectId }: CreateTestPageClientProps) {
 
   if (error && !project) {
     return (
-      <div className="flex min-h-screen items-center justify-center text-mist">
-        {error}
-      </div>
+      <LoadFailure message={error} subject="test" />
     );
   }
 
@@ -86,7 +85,12 @@ export function CreateTestPageClient({ projectId }: CreateTestPageClientProps) {
     return (
       <AppShell project={project}>
         <main className="mx-auto max-w-content px-4 py-12 text-center sm:px-6">
-          <p className="text-mist">
+          {/* The page needs its own heading even when it is only saying "not
+              yet" — without one this route announced no document title to a
+              screen reader and its heading outline started at the first thing
+              inside the shell. */}
+          <h1 className="text-2xl font-semibold tracking-tight text-frost">New test</h1>
+          <p className="mt-3 text-mist">
             Complete project initialization before defining tests.
           </p>
           <Button asChild className="mt-4" variant="outline">

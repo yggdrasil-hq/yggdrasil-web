@@ -323,6 +323,12 @@ export function OrgExtensionsSettings() {
                   <Input
                     value={file.path}
                     placeholder="src/index.ts"
+                    // One path field per draft file, all identical — so the
+                    // name has to include which file this is, or a screen
+                    // reader hears "edit text" repeated with no way to tell
+                    // them apart. The index is 1-based because it labels a row
+                    // a human is counting.
+                    aria-label={`File ${index + 1} path`}
                     onChange={(event) =>
                       setFiles(files.map((item, i) => (i === index ? { ...item, path: event.target.value } : item)))
                     }
@@ -338,6 +344,9 @@ export function OrgExtensionsSettings() {
                 </div>
                 <textarea
                   className="min-h-40 w-full rounded-md border border-rime-soft bg-surface-01 p-3 font-mono text-xs text-frost"
+                  // Same reason as the path field above: a bare textarea per
+                  // file is indistinguishable from its siblings.
+                  aria-label={`File ${index + 1} contents`}
                   value={file.content}
                   onChange={(event) =>
                     setFiles(files.map((item, i) => (i === index ? { ...item, content: event.target.value } : item)))

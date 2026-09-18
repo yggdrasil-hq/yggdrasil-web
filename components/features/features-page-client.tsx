@@ -16,6 +16,7 @@ import {
 import { createFeature, fetchFeatures, fetchProject } from "@/lib/api";
 import type { Feature, Project } from "@/lib/features/types";
 import { appRoute } from "@/lib/config";
+import { LoadFailure } from "@/components/ui/load-failure";
 
 interface FeaturesPageClientProps {
   projectId: string;
@@ -88,9 +89,7 @@ export function FeaturesPageClient({ projectId }: FeaturesPageClientProps) {
 
   if (error && !project) {
     return (
-      <div className="flex min-h-screen items-center justify-center text-mist">
-        {error}
-      </div>
+      <LoadFailure message={error} subject="feature" />
     );
   }
 

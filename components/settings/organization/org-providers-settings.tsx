@@ -712,6 +712,10 @@ function JobDefaultsCard({
               {isAdmin ? (
                 <Select
                   className="mt-3"
+                  // The `<span>` above is the visible label but is not tied to
+                  // this control, so this picker would have no accessible name —
+                  // five identical unnamed "combo boxes", one per job kind.
+                  aria-label={`Default model for ${AGENT_JOB_KIND_LABELS[jobKind]}`}
                   value={current?.modelId ?? ""}
                   disabled={saving === jobKind}
                   onChange={(e) => void handleSelect(jobKind, e.target.value)}

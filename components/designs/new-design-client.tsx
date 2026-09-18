@@ -10,6 +10,7 @@ import { createDesignSession, fetchDesign, fetchProject } from "@/lib/api";
 import { appRoute } from "@/lib/config";
 import type { Project } from "@/lib/features/types";
 import { designSessionPath } from "@/src/features/designs";
+import { LoadFailure } from "@/components/ui/load-failure";
 
 export function NewDesignClient({
   projectId,
@@ -84,7 +85,7 @@ export function NewDesignClient({
   }
 
   if (error && !project) {
-    return <div className="flex min-h-screen items-center justify-center text-red-400">{error}</div>;
+    return <LoadFailure message={error} subject="design" />
   }
   if (!project) {
     return <div className="flex min-h-screen items-center justify-center text-mist">Loading project…</div>;

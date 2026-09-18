@@ -38,6 +38,7 @@ import type {
   ProjectPreviewsResponse,
 } from "@/lib/features/types";
 import { cn } from "@/lib/utils";
+import { LoadFailure } from "@/components/ui/load-failure";
 
 const POLL_INTERVAL_MS = 3000;
 
@@ -162,7 +163,7 @@ export function ProjectDeploymentsClient({ projectId }: { projectId: string }) {
   }
 
   if (error && !project) {
-    return <div className="flex min-h-screen items-center justify-center text-mist">{error}</div>;
+    return <LoadFailure message={error} subject="project" />
   }
 
   if (!project || !history || !deploy) {
@@ -371,7 +372,18 @@ export function ProjectDeploymentsClient({ projectId }: { projectId: string }) {
                         {describeDeploy(entry)}
                       </p>
                       {entry.lastError && (
-                        <p className="mt-1 truncate font-mono text-xs text-red-400">
+                        /*
+                          Three lines rather than one, plus the full text as a
+                          `title`: this message is the *reason a deploy failed*,
+                          and it is the only place the UI ever shows it. A
+                          single truncated line hid the cause behind an ellipsis
+                          with nothing to expand — a Helm or `pg` error is
+                          routinely longer than the row is wide.
+                        */
+                        <p
+                          className="mt-1 line-clamp-3 break-words font-mono text-xs text-red-400"
+                          title={entry.lastError}
+                        >
                           {entry.lastError}
                         </p>
                       )}

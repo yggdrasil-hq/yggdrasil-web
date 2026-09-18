@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { fetchFeatures, fetchProject, fetchProjectOverview, completeProjectInit } from "@/lib/api";
 import type { Feature, Project, ProjectOverview } from "@/lib/features/types";
 import { appRoute } from "@/lib/config";
+import { LoadFailure } from "@/components/ui/load-failure";
 
 interface ProjectHomeClientProps {
   projectId: string;
@@ -71,11 +72,7 @@ export function ProjectHomeClient({ projectId }: ProjectHomeClientProps) {
   }, [projectId]);
 
   if (error) {
-    return (
-      <div className="flex min-h-screen items-center justify-center text-mist">
-        {error}
-      </div>
-    );
+    return <LoadFailure message={error} subject="project" />;
   }
 
   if (!project || !overview) {

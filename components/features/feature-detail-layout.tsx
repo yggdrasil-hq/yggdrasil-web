@@ -11,6 +11,7 @@ import { cancelFeature, fetchFeature, fetchProject, restartFeature } from "@/lib
 import type { Feature, Project } from "@/lib/features/types";
 import { featureStageForStatus } from "@/lib/features/stage";
 import { appRoute } from "@/lib/config";
+import { LoadFailure } from "@/components/ui/load-failure";
 
 interface FeatureDetailLayoutProps {
   projectId: string;
@@ -111,7 +112,7 @@ export function FeatureDetailLayout({ projectId, featureId, children }: FeatureD
 
   if (error && !feature) {
     return (
-      <div className="flex min-h-screen items-center justify-center text-mist">{error}</div>
+      <LoadFailure message={error} subject="feature" />
     );
   }
 

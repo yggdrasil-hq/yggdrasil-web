@@ -15,6 +15,7 @@ import {
 import { appRoute } from "@/lib/config";
 import { getLatestDesignSnapshot, isDesignReplyPending } from "@/lib/features/design";
 import type { DesignSession, FeatureEvent, Project } from "@/lib/features/types";
+import { LoadFailure } from "@/components/ui/load-failure";
 
 const POLL_INTERVAL_MS = 2000;
 
@@ -96,8 +97,12 @@ export function DesignSessionClient({
     }
   }
 
+  if (error) {
+    return <LoadFailure message={error} subject="design" />;
+  }
+
   if (!project || !session) {
-    return <div className="flex min-h-screen items-center justify-center text-mist">{error ?? "Loading design session…"}</div>;
+    return <div className="flex min-h-screen items-center justify-center text-mist">Loading design session…</div>;
   }
 
   return (

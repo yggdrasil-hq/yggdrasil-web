@@ -19,6 +19,7 @@ import {
   reopenDesignPath,
   sessionAttentionLabel,
 } from "@/src/features/designs";
+import { LoadFailure } from "@/components/ui/load-failure";
 
 /**
  * One design's history (ADR 020 item 6). Shows the index metadata and every
@@ -70,7 +71,7 @@ export function DesignDetailClient({
 
   if (error && !project) {
     return (
-      <div className="flex min-h-screen items-center justify-center text-red-400">{error}</div>
+      <LoadFailure message={error} subject="design" />
     );
   }
   if (!project || !design) {
