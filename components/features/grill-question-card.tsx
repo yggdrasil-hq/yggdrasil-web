@@ -45,17 +45,13 @@ interface GrillQuestionCardProps {
  *   cannot go anywhere, which is the same false affordance #74 removed from the
  *   Agentic Review panel.
  *
- * **Why native radio/checkbox inputs rather than buttons.** This is a form: the
- * browser's own keyboard behaviour, focus handling and screen-reader
+ * **Why native `<input type="radio">`/`checkbox` inputs rather than buttons.** This
+ * is a form: the browser's own keyboard behaviour, focus handling and screen-reader
  * announcement for a radio group are exactly what is wanted, and the ARIA
  * tab/toggle patterns the app uses elsewhere are for *filters* (which re-render
  * content) not for *choosing a value* (which is submitted). Reusing
  * `FilterToggleGroup` here would have claimed a filter's semantics for a form
  * control.
- *
- * (Spelling the element out rather than quoting it: `aria/form-controls.ts` scans
- * raw source, so a tag written in this comment is read as a control — and the
- * scan then reports the comment as an unlabelled input.)
  *
  * `fieldset` + `aria-labelledby` rather than a `<legend>`: the question is
  * agent-authored markdown and renders as block content, which `<legend>` does not
