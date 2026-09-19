@@ -27,6 +27,8 @@ import {
   getMockFeature,
   getMockFeatureEvents,
   getMockJobSession,
+  mockForkPoints,
+  mockJobIds,
   getMockDesign,
   getMockDesignEvents,
   getMockDesigns,
@@ -521,6 +523,44 @@ export const handlers = [
    */
   http.get(apiUrl("/projects/:projectId/jobs/:jobId/session"), ({ params }) =>
     HttpResponse.json(getMockJobSession(String(params.jobId))),
+  ),
+
+  /*
+   * ADR 032 item 3: the resume gesture's dispatch. Feature-scoped like its rewind
+   * sibling, and answered rather than refused outright — a 404 for every mock resume
+   * would make mock mode exercise a failure the real client reaches only on a genuinely
+   * unusable point.
+   *
+   * **It validates, deliberately.** Returning 201 unconditionally would let a mock pass
+   * while a real request carrying a point the fixture does not hold was refused — the
+   * same reason the session read answers with the fixture's own state rather than a
+   * convenient constant.
+   */
+  http.post(
+    apiUrl("/projects/:projectId/features/:featureId/resume-from-message"),
+    async ({ params, request }) => {
+      const feature = getMockFeature(String(params.projectId), String(params.featureId));
+      if (!feature) {
+        return HttpResponse.json({ error: "Feature not found" }, { status: 404 });
+      }
+      const body = (await request.json()) as { entryId?: string };
+      const jobId = mockJobIds[String(params.featureId)];
+      const points = jobId ? mockForkPoints[jobId] : null;
+      if (points?.state !== "captured") {
+        return HttpResponse.json(
+          { error: "No resumable points were reported for this run." },
+          { status: 409 },
+        );
+      }
+      const known = (points.points ?? []).some((point) => point.entryId === body.entryId);
+      if (!known) {
+        return HttpResponse.json(
+          { error: "That is not a resume point of this run's conversation." },
+          { status: 404 },
+        );
+      }
+      return HttpResponse.json({ ...feature, status: "draft" }, { status: 201 });
+    },
   ),
 
   http.get(apiUrl("/projects/:projectId/features/:featureId/events"), ({ params }) => {

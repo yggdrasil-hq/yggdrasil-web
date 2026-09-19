@@ -16,6 +16,8 @@ import type {
   Feature,
   FeatureEvent,
   FeatureEventsResponse,
+  ForkPoint,
+  ForkPointState,
   JobSession,
   JobSessionResponse,
   JobStatus,
@@ -348,6 +350,30 @@ export const mockJobIds: Record<string, string> = {
  * truth about what exists. A test that wants a stored session sets one.
  */
 export const mockJobSessions: Record<string, JobSession> = {};
+
+/**
+ * ADR 032 item 3: which run a mock feature's current run forked from.
+ *
+ * Seeded absent, like the sessions above, and for the same reason: a fabricated fork
+ * source would make every mock run advertise a resumed conversation that never
+ * happened, and the notice this drives exists to tell the truth about where the
+ * transcript came from.
+ */
+export const mockForkSources: Record<string, string> = {};
+
+/**
+ * ADR 032 item 2: the fork points a mock job's session carries.
+ *
+ * A parallel map rather than a field on `mockJobSessions`, because the two are
+ * genuinely independent reports on the real side — a run can have its bytes stored and
+ * an unanswered capture — and a fixture that could not express that would make the
+ * "we could not find out" wording unreachable in mock mode. Absent means **no row**,
+ * which the API reports as `unknown`.
+ */
+export const mockForkPoints: Record<
+  string,
+  { state: ForkPointState; points: ForkPoint[] | null }
+> = {};
 
 export const mockLastErrors: Record<string, string> = {};
 
@@ -1209,6 +1235,10 @@ export function getMockFeatureEvents(featureId: string): FeatureEventsResponse {
     // nullable pair.
     jobId: mockJobIds[featureId] ?? null,
     restartedFromEventId: null,
+    // ADR 032 item 3. Null on the default fixture: a fabricated fork source would make
+    // every mock run claim it continued an earlier conversation. `mockForkSources` seeds
+    // one for the tests that need the resumed notice.
+    forkFromJobId: mockForkSources[featureId] ?? null,
     // Issue #92: present exactly when a test seeds a wait, mirroring the API's
     // own collapse of "not waiting" and "waiting with unknown fields".
     awaitingReply: mockAwaitingReplies[featureId] ?? null,
@@ -1231,6 +1261,12 @@ export function getMockFeatureEvents(featureId: string): FeatureEventsResponse {
  */
 export function getMockJobSession(jobId: string): JobSessionResponse {
   const session = mockJobSessions[jobId];
+  /*
+   * The points are attached here rather than stored on the session fixture, so a test
+   * can seed “bytes stored, capture unanswered” — the state that has to render as "we
+   * could not find out" rather than as an empty list.
+   */
+  const forkPoints = mockForkPoints[jobId] ?? { state: "unknown" as const, points: null };
   if (!session) {
     return {
       session: {
@@ -1243,13 +1279,16 @@ export function getMockJobSession(jobId: string): JobSessionResponse {
         purgedAt: null,
         createdAt: null,
         canFork: false,
+        forkPoints,
       },
       explanation: "No session was reported for this run.",
+      forkPointsExplanation: MOCK_FORK_POINT_EXPLANATIONS[forkPoints.state],
     };
   }
   return {
-    session: { ...session, canFork: session.state === "available" },
+    session: { ...session, canFork: session.state === "available", forkPoints },
     explanation: MOCK_SESSION_EXPLANATIONS[session.state],
+    forkPointsExplanation: MOCK_FORK_POINT_EXPLANATIONS[forkPoints.state],
   };
 }
 
@@ -1260,6 +1299,19 @@ const MOCK_SESSION_EXPLANATIONS: Record<JobSession["state"], string> = {
   not_collected: "This run did not save a session.",
   unavailable: "This run's session could not be retrieved.",
   unknown: "No session was reported for this run.",
+};
+
+/**
+ * ADR 032 item 2: what the mock says about a job's resume points.
+ *
+ * The same three sentences the API composes, and the same rule: `captured` is the only
+ * one that describes an answer, so a page reading these cannot present an unanswered
+ * capture as an empty list.
+ */
+const MOCK_FORK_POINT_EXPLANATIONS: Record<ForkPointState, string> = {
+  captured: "The points this session can resume from were recorded.",
+  unavailable: "Which points this session can resume from could not be determined.",
+  unknown: "No resumable points were reported for this run.",
 };
 
 /** Simulates a grill session completing right after a reply — good enough for exercising the UI end-to-end without a real Orchestrator. */

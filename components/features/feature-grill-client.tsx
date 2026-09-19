@@ -15,6 +15,7 @@ import {
   fetchFeatureEvents,
   fetchJobSession,
   restartFeatureFromMessage,
+  resumeFeatureFromMessage,
   retryFeatureGrill,
   sendFeatureMessage,
 } from "@/lib/api";
@@ -35,6 +36,13 @@ import {
   restartConfirmCopy,
   restartedNotice,
 } from "@/lib/features/grill-restart";
+import {
+  canResumeFromHere,
+  resumeConfirmCopy,
+  resumePointsRefusal,
+  resumedNotice,
+  resumablePoints,
+} from "@/lib/features/grill-resume";
 import {
   countAgentTextEvents,
   shouldDropStreamBuffer,
@@ -122,6 +130,15 @@ export function FeatureGrillClient() {
   const [sessionLoading, setSessionLoading] = useState(false);
   const [restartedFrom, setRestartedFrom] = useState<string | null>(null);
   /**
+   * ADR 032 item 3: the run this one forked from, when its interview was resumed.
+   *
+   * Separate state from `restartedFrom` rather than one notion of "came from an earlier
+   * run": the two produce different notices, because a rewind discarded turns and a fork
+   * did not — telling a resumed run's user that their conversation was discarded would be
+   * the exact confusion ADR 032 item 3 separates the controls to avoid.
+   */
+  const [resumedFrom, setResumedFrom] = useState<string | null>(null);
+  /**
    * Issue #92: how long this grill has been waiting on an unanswered question.
    *
    * Held as a *view* rather than as the API's `awaitingReply`, because
@@ -153,6 +170,20 @@ export function FeatureGrillClient() {
   const [retrying, setRetrying] = useState(false);
   const [confirmingRestartAt, setConfirmingRestartAt] = useState<string | null>(null);
   const [restartingAt, setRestartingAt] = useState<string | null>(null);
+  /**
+   * ADR 032 item 3's resume gesture: whether the picker is open, which point is being
+   * confirmed, and whether a resume is in flight.
+   *
+   * A picker rather than a per-turn button, unlike the rewind beside it, and that is a
+   * decision rather than a shortcut: the resume points are Pi's own list from
+   * `get_fork_messages`, and matching one to a transcript bubble would mean comparing
+   * user-message *text* — the weaker, second reading of Pi's data that ADR 032 item 2
+   * exists to avoid. Showing the points as they were reported keeps this surface
+   * displaying what Pi said rather than re-deriving it.
+   */
+  const [resumePickOpen, setResumePickOpen] = useState(false);
+  const [confirmingResumeAt, setConfirmingResumeAt] = useState<string | null>(null);
+  const [resumingAt, setResumingAt] = useState<string | null>(null);
   const [polled, setPolled] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   /**
@@ -205,6 +236,7 @@ export function FeatureGrillClient() {
       setJobKind(eventsData.jobKind);
       setJobId(eventsData.jobId);
       setRestartedFrom(eventsData.restartedFromEventId);
+      setResumedFrom(eventsData.forkFromJobId);
       /*
        * Issue #92. The functional updater is load-bearing rather than stylistic:
        * the transition needs the previous view to decide whether a null
@@ -427,6 +459,31 @@ export function FeatureGrillClient() {
     }
   }
 
+  /*
+   * ADR 032 item 3: resume from a stored session.
+   *
+   * Only ever called from the confirm step, like the rewind — but the confirmation says
+   * something different, because this gesture keeps the conversation. The API validates
+   * the point against the run's captured list, so a stale picker is refused there rather
+   * than dispatched; the error is surfaced rather than swallowed for that reason.
+   */
+  async function handleResumeFrom(entryId: string) {
+    setResumingAt(entryId);
+    setActionError(null);
+    try {
+      const updated = await resumeFeatureFromMessage(projectId, featureId, entryId);
+      setFeature(updated);
+    } catch (error) {
+      setActionError(
+        error instanceof Error ? error.message : "Failed to resume the grill from that point",
+      );
+    } finally {
+      setResumingAt(null);
+      setConfirmingResumeAt(null);
+      setResumePickOpen(false);
+    }
+  }
+
   const live = isGrillLive(feature);
   const stoppedMessage = grillStoppedMessage(jobStatus, lastError);
   const placeholder = live
@@ -443,6 +500,13 @@ export function FeatureGrillClient() {
     hasTranscript: events.length > 0,
   });
   const rewoundNotice = restartedNotice(restartedFrom);
+  /*
+   * ADR 032 item 3, the other half of the same question: a run that came from a *fork*
+   * needs its own explanation, because its transcript also starts mid-conversation and
+   * the reason is the opposite one — nothing was discarded, the forked context simply
+   * lives in the restored session rather than in `job_events`.
+   */
+  const resumedFromNotice = resumedNotice(resumedFrom);
 
   /*
    * ADR 032 item 5: the sentence explaining what became of this run's session, or
@@ -457,15 +521,21 @@ export function FeatureGrillClient() {
   });
   const sessionMessage = sessionApplies ? sessionNotice(sessionView) : null;
   /*
-   * ADR 032 item 3's non-destructive resume is not offered yet, and the reason is
-   * worth keeping where the control would be: a true fork needs a **Pi entry id** from
-   * `get_fork_messages`, which is an RPC to a live process and is not captured
-   * anywhere (issue #28 tracks the capture). Every branch below therefore reports
-   * whether a fork would be *possible* and never offers one it cannot finish — an
-   * optimistic control that then fails is worse than an absent one. ADR 024's
-   * destructive rewind remains the control, exactly as item 5 intends.
+   * ADR 032 item 3's non-destructive resume, offered only where there is something to
+   * offer from.
+   *
+   * `canFork` (the bytes) and the captured points are two independent facts on the API
+   * side, and this combines them into "can the user do anything": a control with nothing
+   * to pick from is a dead end. When it cannot be offered the page says *why*, and
+   * `resumePointsRefusal` keeps the three reasons apart — a failed capture is worth
+   * retrying, an unreported one may mean collection is off for the install, and an empty
+   * captured list is a fact about the run. ADR 024's destructive rewind stays available
+   * in every one of those cases, which is what item 5's fallback means.
    */
   const resumable = sessionApplies && canResumeFromSession({ state: sessionView, session });
+  const resumePoints = sessionApplies ? resumablePoints(session) : null;
+  const resumeOffered = sessionApplies && canResumeFromHere(session);
+  const resumeRefusal = sessionApplies ? resumePointsRefusal(session) : null;
 
   const processing = isGrillProcessing({
     awaitingUserInput: feature.awaitingUserInput,
@@ -534,6 +604,18 @@ export function FeatureGrillClient() {
               {rewoundNotice}
             </p>
           ) : null}
+          {/* ADR 032 item 3. Its own note rather than a branch of the one above:
+              the resumed run's transcript also starts mid-conversation, and the
+              reason is the opposite one. `data-resumed-from` so the distinction is
+              assertable without matching on prose. */}
+          {resumedFromNotice ? (
+            <p
+              className="rounded-md border border-rime-soft bg-surface-02 p-2 text-xs text-mist"
+              data-resumed-from={resumedFrom ?? ""}
+            >
+              {resumedFromNotice}
+            </p>
+          ) : null}
           {sessionMessage ? (
             <p
               className="rounded-md border border-rime-soft bg-surface-02 p-2 text-xs text-mist"
@@ -546,6 +628,92 @@ export function FeatureGrillClient() {
               data-session-resumable={resumable ? "true" : "false"}
             >
               {sessionMessage}
+            </p>
+          ) : null}
+          {/*
+            ADR 032 item 3's resume control.
+
+            A distinct block rather than a per-turn button beside the rewind — the
+            points are Pi's own list, and the two gestures must be tellable apart at a
+            glance: this one keeps the conversation, the per-turn rewind below discards
+            the turns after its chosen message. Collapsing them into two buttons that
+            looked alike would lose exactly the distinction ADR 032 item 3 exists for.
+
+            `data-resume-offered` reports the condition so it is assertable without
+            reading copy, and the refusal line is rendered when there is a reason to give
+            — one of the three, never a generic "resume unavailable".
+          */}
+          {resumeOffered && resumePoints ? (
+            <div
+              className="rounded-md border border-rime-soft bg-surface-02 p-2 text-xs text-mist"
+              data-resume-offered="true"
+            >
+              {!resumePickOpen ? (
+                <button
+                  type="button"
+                  onClick={() => setResumePickOpen(true)}
+                  className="text-shadow underline-offset-2 hover:text-frost hover:underline"
+                  title="Continue the agent's own session from an earlier message, keeping the conversation"
+                >
+                  ↻ Resume from here (keeps this conversation)
+                </button>
+              ) : (
+                <div className="space-y-2">
+                  <p>
+                    Resume the agent's own session from one of these earlier messages. The
+                    conversation is kept, and a new run continues from the point you pick.
+                  </p>
+                  <ul className="space-y-2">
+                    {resumePoints.map((point) => (
+                      <li
+                        key={point.entryId}
+                        className="rounded-md border border-rime-soft bg-surface-01 p-2"
+                        data-resume-point={point.entryId}
+                      >
+                        <p className="text-shadow">{point.text}</p>
+                        {confirmingResumeAt === point.entryId ? (
+                          <div className="mt-2 space-y-2">
+                            <p>{resumeConfirmCopy({ isAdrApproved: feature.adrApproved })}</p>
+                            <div className="flex flex-wrap gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={resumingAt === point.entryId}
+                                onClick={() => void handleResumeFrom(point.entryId)}
+                              >
+                                {resumingAt === point.entryId ? "Resuming…" : "Yes, resume from here"}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                disabled={resumingAt === point.entryId}
+                                onClick={() => setConfirmingResumeAt(null)}
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmingResumeAt(point.entryId)}
+                            className="mt-1 text-shadow underline-offset-2 hover:text-frost hover:underline"
+                          >
+                            Resume from this message
+                          </button>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          ) : resumeRefusal ? (
+            <p
+              className="rounded-md border border-rime-soft bg-surface-02 p-2 text-xs text-mist"
+              data-resume-offered="false"
+            >
+              {resumeRefusal}
             </p>
           ) : null}
           {events.map((event, index) => {

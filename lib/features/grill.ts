@@ -1,4 +1,5 @@
 import type { Feature, FeatureEvent, FeatureType, JobStatus } from "./types";
+import { forkFailureNotice } from "./grill-resume";
 import { featureStageForStatus, featureStagePath } from "./stage";
 
 /**
@@ -102,6 +103,15 @@ export function grillBubbleFor(event: FeatureEvent): GrillBubbleView | null {
       };
     case "user_message":
       return { label: "You", tone: "user", content: event.message ?? "" };
+    /*
+     * ADR 032 item 3. Without this arm a `fork_failed` event renders as **nothing** —
+     * both the agent's own sentence and the stage it names are dropped at the last
+     * hop, leaving a run that is `failed` with a transcript that does not say why.
+     * `forkFailureNotice`'s wording rather than the raw `message`, because the stage is
+     * what tells the reader what to do about it.
+     */
+    case "fork_failed":
+      return { label: "System", tone: "error", content: forkFailureNotice(event) };
     default:
       return null;
   }

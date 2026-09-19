@@ -176,11 +176,14 @@ describe("the repo's own mock coverage (#64)", () => {
     //        list and a superseded run's transcript)
     //   #28  `/projects/:projectId/jobs/:jobId/session` (ADR 032: the session read
     //        the grill page makes to tell the user whether the run can be resumed)
+    //   #103 `/projects/:projectId/features/:featureId/resume-from-message` (ADR 032 item 3:
+    //        the resume gesture's dispatch — arrived with its handler, so both counters
+    //        moved together and the ledger is unchanged)
     // Pinned deliberately so the next path has to be counted rather than absorbed.
     expect({
       called: coverage.called.length,
       handled: coverage.handled.length,
-    }).toEqual({ called: 91, handled: 55 });
+    }).toEqual({ called: 92, handled: 56 });
   });
 
   /**
