@@ -168,14 +168,15 @@ describe("the repo's own mock coverage (#64)", () => {
    * of this disagreed with each other.
    */
   it("has the expected number of called and handled paths", () => {
-    // Both counters moved by one together when #35's readiness gate landed: the
-    // middleware calls `/organizations/readiness` on every navigation, and the
-    // handler was added with it rather than ledged as debt. Pinned deliberately
-    // so the next path has to be counted rather than absorbed.
+    // Both counters moved together twice in this batch, each time because a call
+    // arrived with its handler rather than as ledger debt:
+    //   #35  `/organizations/readiness` (middleware, every navigation)
+    //   #31  `/projects/:projectId/timezone` (the timezone picker's write)
+    // Pinned deliberately so the next path has to be counted rather than absorbed.
     expect({
       called: coverage.called.length,
       handled: coverage.handled.length,
-    }).toEqual({ called: 87, handled: 51 });
+    }).toEqual({ called: 88, handled: 52 });
   });
 
   /**

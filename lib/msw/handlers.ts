@@ -69,6 +69,7 @@ import {
   upsertMockUserSecret,
 } from "@/lib/msw/fixtures";
 import type { Feature, OrgRole, Test } from "@/lib/features/types";
+import { isResolvableTimeZone } from "@/lib/tests/schedules";
 
 export const handlers = [
   http.get(apiUrl("/github/installations"), () => {
@@ -218,6 +219,33 @@ export const handlers = [
     }
     project.agenticReviewEnabled = body.agenticReviewEnabled;
     return HttpResponse.json(getMockProject(project.id)!);
+  }),
+
+  // Issue #31 part 1's write half. Mocked rather than ledged: the project settings
+  // page renders its timezone card from `PublicProject.timeZone`, so without a
+  // handler the card would load, offer a picker, and fail every save — a
+  // half-working surface of exactly the kind the coverage test exists to catch.
+  //
+  // It mutates the fixture, so the read side (`/projects/:projectId`) reflects the
+  // change on the next fetch, which is what makes the loop testable in mock mode.
+  http.put(apiUrl("/projects/:projectId/timezone"), async ({ params, request }) => {
+    const project = getMockProject(String(params.projectId));
+    if (!project) {
+      return HttpResponse.json({ error: "Project not found" }, { status: 404 });
+    }
+
+    const body = (await request.json()) as { timeZone?: string | null };
+    const requested = body.timeZone ?? null;
+
+    // The API's own validation is an `Intl` check, and its message names the zone
+    // rather than the payload, so a mock that accepted anything would let a client
+    // ship a typo the real API rejects.
+    if (requested !== null && !isResolvableTimeZone(requested)) {
+      return HttpResponse.json({ error: `Unknown time zone: ${requested}` }, { status: 400 });
+    }
+
+    project.timeZone = requested;
+    return HttpResponse.json({ timeZone: requested });
   }),
 
   http.post(apiUrl("/projects/:projectId/repositories"), async ({ params, request }) => {
