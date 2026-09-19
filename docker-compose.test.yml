@@ -6,4 +6,76 @@ services:
       context: .
       dockerfile: deploy/Dockerfile.test
     volumes:
+      # Issue #102: the source is mounted **read-only** so the suite can only ever
+      # run the tree that is on disk.
+      #
+      # **What goes wrong without this.** `deploy/Dockerfile.test` does `COPY . .`,
+      # which bakes the source into the image. Only `test-results/` was mounted, so
+      # `docker compose run test` without `--build` silently reused the cached
+      # image and reported on the **previous** build. This repo is where that
+      # actually produced a wrong conclusion: the first attempt to falsify a new
+      # guard in #100 reported a full pass, and the cause was a stale image rather
+      # than a weak guard. Re-run with `--build`, the same mutation failed exactly
+      # as it should.
+      #
+      # **Why it matters and why it is fixed here rather than noted.** A stale
+      # image makes a mutation test report a false *negative* on a guard, which is
+      # the expensive direction: the mutation really is in the file, `grep`
+      # confirms it, the suite passes because it ran an old build, and the
+      # conclusion drawn is "this check does not catch it" — so a working check
+      # gets rewritten or deleted. It also silently invalidates the rule this
+      # whole burn-down now leans on: *a mutation test is evidence only if the
+      # mutation is in the code*.
+      #
+      # **Why enumerated paths rather than `.` as one mount.** A single `.:/app:ro`
+      # is tidier and gap-free, and it was tried. What was *observed*:
+      #   1. `scripts/run-tests.sh` lost its executable bit. Git tracks it `100644`,
+      #      so the bind mount shadows the image's `RUN chmod +x` and the
+      #      container's CMD dies with `ERR_UNKNOWN_FILE_EXTENSION` on `.sh`. Fixed
+      #      at source in this same change — the script is `100755` in git now.
+      #   2. Vitest writes a timestamped temp config *beside* `vitest.config.ts`
+      #      (`/app/vitest.config.ts.timestamp-*.mjs`), so a read-only `/app` fails
+      #      with `EROFS: read-only file system`. The run stops at the first
+      #      failure, so this is as far as the trial got.
+      # A third, not reached because of the above and therefore *not* observed here:
+      # `tsconfig.json` sets `"incremental": true`, so `tsc --noEmit` writes
+      # `tsconfig.tsbuildinfo` at the repo root, which a read-only `/app` would also
+      # refuse. Recorded as expected rather than seen.
+      # And one reason it is wrong even where it happens to work, verified by
+      # mechanism rather than left as a suspicion: mounting `.` shadows the image's
+      # `node_modules` with the host's — a marker file created in the host's
+      # `node_modules` is visible under a `.:/app` mount — so the suite would run
+      # against a *different dependency tree* than the image's install produced,
+      # trading a stale-source bug for a stale-deps bug.
+      #
+      # **The rule this list follows.** Every path the suite reads is mounted `:ro`;
+      # anything not listed comes from the image build and will be stale after an
+      # edit. Adding a new top-level directory of source means adding it here.
+      # `package.json` / `package-lock.json` are deliberately **not** mounted: they
+      # are what the image's `node_modules` was installed from, and mounting them
+      # live would pair a new manifest with the old installed tree.
+      #
+      # `deploy/`, `docs/` and `.github/` are not mounted either — the suite reads
+      # none of them, and a mount that nothing reads is a claim without a check.
+      #
+      # The enumeration has an unwritten gap — a path added to the repo and not
+      # listed here silently reverts to the build — which is what `run-tests.sh`'s
+      # "source under test" digest is for: it makes the tree a run actually saw
+      # visible in the log.
+      - ./app:/app/app:ro
+      - ./components:/app/components:ro
+      - ./lib:/app/lib:ro
+      - ./src:/app/src:ro
+      - ./public:/app/public:ro
+      - ./scripts:/app/scripts:ro
+      - ./components.json:/app/components.json:ro
+      - ./middleware.ts:/app/middleware.ts:ro
+      - ./next.config.ts:/app/next.config.ts:ro
+      - ./postcss.config.mjs:/app/postcss.config.mjs:ro
+      - ./tailwind.config.ts:/app/tailwind.config.ts:ro
+      - ./tsconfig.json:/app/tsconfig.json:ro
+      - ./vitest.config.ts:/app/vitest.config.ts:ro
+      # Writable, and the only writable path: the JSON report and the summary
+      # script both write here, and a run must not be able to dirty the tree —
+      # issue #34 was an untracked `tsconfig.tsbuildinfo` doing exactly that.
       - ./test-results:/app/test-results
