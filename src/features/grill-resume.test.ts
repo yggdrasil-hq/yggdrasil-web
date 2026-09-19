@@ -68,6 +68,34 @@ describe("resumablePoints", () => {
     // the refusal beside it has three branches.
     expect(resumablePoints(session({ forkPoints: { state: "captured", points: [] } }))).toBeNull();
   });
+
+  it("refuses the list when the state says the capture was not an answer", () => {
+    /*
+     * **This is the case that makes the `state` check load-bearing, and it was found by a
+     * surviving mutation rather than by design.**
+     *
+     * For every input the API can actually produce, reading `state` and reading `points`
+     * agree: the table's CHECK keeps `points` null unless the state is `captured`, so a
+     * version of `resumablePoints` that ignored `state` and only checked the list length
+     * passed the whole suite. Mutating the check away changed no result — which is not a
+     * weak guard but an *unreachable* one.
+     *
+     * It becomes reachable the moment a server contradicts its own contract: an
+     * `unavailable` or `unknown` capture carrying a list. That is exactly the shape ADR
+     * 032 item 5 exists to forbid, and it is worth pinning because the failure would be
+     * the silent one — the page would present points as an answer while the state beside
+     * them said nobody found out.
+     */
+    const contradicting = { state: "unavailable" as const, points: POINTS };
+    expect(resumablePoints(session({ forkPoints: contradicting }))).toBeNull();
+    expect(
+      resumablePoints(session({ forkPoints: { state: "unknown", points: POINTS } })),
+    ).toBeNull();
+    // And the refusal still says which case it is, rather than rendering the list.
+    expect(
+      resumePointsRefusal(session({ forkPoints: contradicting })),
+    ).toContain("could not be determined");
+  });
 });
 
 describe("canResumeFromHere", () => {
