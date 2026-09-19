@@ -8,12 +8,11 @@ import {
   formatDuration,
   hasTestingFailures,
 } from "@/lib/features/testing";
-import { agenticReviewToView, blockStatusLabel } from "@/lib/features/agentic-review";
 import {
   manualReviewSubviewForStatus,
   manualReviewStatusCopy,
 } from "@/lib/features/manual-review";
-import type { TestingResults, AgenticReview } from "@/lib/features/types";
+import type { TestingResults } from "@/lib/features/types";
 
 function sampleResults(): TestingResults {
   return {
@@ -100,30 +99,6 @@ describe("formatDuration", () => {
   });
 });
 
-describe("agenticReviewToView", () => {
-  it("counts blocking findings and derives the verdict", () => {
-    const review: AgenticReview = {
-      verdict: "changes_requested",
-      comment: null,
-      findings: [
-        { location: "a.ts:1", note: "n", blocking: true },
-        { location: "b.ts:2", note: "n", blocking: false },
-      ],
-      jobId: null,
-      completedAt: null,
-    };
-    const view = agenticReviewToView(review);
-    expect(view.verdict).toBe("changes_requested");
-    expect(view.blockingCount).toBe(1);
-    expect(view.approved).toBe(false);
-    expect(blockStatusLabel(1)).toBe("1 blocking issue");
-  });
-
-  it("reports no blocking issues as plural-safe", () => {
-    const rejected = blockStatusLabel(0);
-    expect(rejected).toBe("no blocking issues");
-  });
-});
 
 describe("manualReviewSubviewForStatus", () => {
   it("maps returned/merged/in_review to the grouping tabs", () => {

@@ -145,24 +145,21 @@ export function blockingLabelFor(review: AgenticReview): string | null {
   return blockStatusLabel(detail.findings.filter((finding) => finding.blocking).length);
 }
 
-export interface AgenticReviewView {
-  verdict: "approved" | "changes_requested" | null;
-  blockingCount: number;
-  approved: boolean;
-}
-
-/** The high-level verdict + blocking-finding count used for banner + tabs. */
-export function agenticReviewToView(
-  review: AgenticReview,
-): AgenticReviewView {
-  const blockingCount = review.findings.filter((finding) => finding.blocking).length;
-  return {
-    verdict: review.verdict,
-    blockingCount,
-    approved: review.verdict === "approved",
-  };
-}
-
+/**
+ * The phrase for a *known* blocking count. Plural-safe, including zero.
+ *
+ * **Callers must not use this when the count is unknown.** `blockStatusLabel(0)`
+ * is a true statement about an empty findings array and a false one about a
+ * review whose blocking issues are written as prose — which is every review the
+ * current producer writes. `blockingLabelFor` is the function that decides
+ * whether the count is knowable at all, and it is what the panel calls; this is
+ * only the wording.
+ *
+ * (The removed `agenticReviewToView` was a second, less careful path to the same
+ * number: it counted `findings.filter(blocking)` unconditionally, so it reported
+ * "no blocking issues" for exactly the prose reviews the count cannot speak for.
+ * Unused is not the same as harmless.)
+ */
 export function blockStatusLabel(blockingCount: number): string {
   if (blockingCount === 0) return "no blocking issues";
   return `${blockingCount} blocking issue${blockingCount === 1 ? "" : "s"}`;
