@@ -5,6 +5,7 @@ import { apiBaseUrl } from "@/lib/config";
 import {
   createLiveRelay,
   createRefreshCoalescer,
+  featureSubscription,
   liveSocketUrl,
   type LiveRelayStatus,
 } from "@/lib/features/live-relay";
@@ -81,8 +82,11 @@ export function useLiveFeatureRelay(input: {
     });
     const relay = createLiveRelay({
       url,
-      projectId,
-      featureId,
+      /*
+       * The feature protocol, from its one home in `lib/` so a test can exercise the
+       * real thing rather than a copy of it — see the note on `LiveRelayDeps.protocol`.
+       */
+      protocol: featureSubscription({ projectId, featureId }),
       onEvent: () => refresh.trigger(),
       onDelta: (text) => onDeltaRef.current?.(text),
       onStatusChange: setStatus,

@@ -10,6 +10,7 @@ import {
   createLiveRelay,
   createRefreshCoalescer,
   deltaTextFromFrame,
+  featureSubscription,
   jobEventFromFrame,
   liveSocketUrl,
   parseLiveFrame,
@@ -20,6 +21,16 @@ import {
 
 const PROJECT_ID = "22222222-2222-4222-8222-222222222222";
 const FEATURE_ID = "33333333-3333-4333-8333-333333333333";
+
+/**
+ * The feature protocol, from its one home in `lib/` rather than restated here — so
+ * these three call sites exercise the implementation the hook actually uses. See the
+ * note in `live-relay-design.test.ts` for why that distinction turned out to matter:
+ * a restated protocol is a copy no mutation can falsify.
+ */
+function featureProtocol() {
+  return featureSubscription({ projectId: PROJECT_ID, featureId: FEATURE_ID });
+}
 
 function makeSocket() {
   const sent: string[] = [];
@@ -73,8 +84,7 @@ function buildRelay(options: { maxAttempts?: number } = {}) {
 
   const relay = createLiveRelay({
     url: "ws://api.test/api/ws",
-    projectId: PROJECT_ID,
-    featureId: FEATURE_ID,
+    protocol: featureProtocol(),
     onEvent,
     onDelta,
     onStatusChange: (status) => statuses.push(status),
@@ -332,8 +342,7 @@ describe("createLiveRelay: deltas", () => {
     const socket = makeSocket();
     const relay = createLiveRelay({
       url: "ws://api.test/api/ws",
-      projectId: PROJECT_ID,
-      featureId: FEATURE_ID,
+      protocol: featureProtocol(),
       onEvent: vi.fn(),
       socketFactory: () => socket,
       schedule: () => 0,
@@ -404,7 +413,7 @@ describe("createLiveRelay", () => {
   it("reconnects with backoff after an ordinary close", () => {
     const { relay, socket, scheduler, statuses } = buildRelay();
     socket().onopen?.();
-    socket().onmessage?.({ data: JSON.stringify({ type: "subscribed" }) });
+    socket().onmessage?.({ data: JSON.stringify({ type: "subscribed", featureId: FEATURE_ID }) });
     expect(relay.status()).toBe("live");
 
     socket().onclose?.({ code: 1006 });
@@ -493,8 +502,7 @@ describe("createLiveRelay", () => {
     const scheduler = makeScheduler();
     const relay = createLiveRelay({
       url: "ws://api.test/api/ws",
-      projectId: PROJECT_ID,
-      featureId: FEATURE_ID,
+      protocol: featureProtocol(),
       onEvent: vi.fn(),
       socketFactory: () => {
         throw new Error("blocked");
@@ -515,10 +523,10 @@ describe("createLiveRelay", () => {
     scheduler.run(0);
 
     expect(sockets).toHaveLength(2);
-    sockets[0].onmessage?.({ data: JSON.stringify({ type: "subscribed" }) });
+    sockets[0].onmessage?.({ data: JSON.stringify({ type: "subscribed", featureId: FEATURE_ID }) });
     expect(relay.status()).toBe("connecting");
 
-    sockets[1].onmessage?.({ data: JSON.stringify({ type: "subscribed" }) });
+    sockets[1].onmessage?.({ data: JSON.stringify({ type: "subscribed", featureId: FEATURE_ID }) });
     expect(relay.status()).toBe("live");
   });
 
@@ -535,7 +543,7 @@ describe("createLiveRelay", () => {
   it("stops cleanly: closes the socket, cancels the retry, and is idempotent", () => {
     const { relay, socket, scheduler, onEvent } = buildRelay();
     socket().onopen?.();
-    socket().onmessage?.({ data: JSON.stringify({ type: "subscribed" }) });
+    socket().onmessage?.({ data: JSON.stringify({ type: "subscribed", featureId: FEATURE_ID }) });
     socket().onclose?.({ code: 1006 });
     expect(scheduler.pendingDelays()).toHaveLength(1);
 
