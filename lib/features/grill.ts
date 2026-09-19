@@ -14,11 +14,18 @@ import { featureStageForStatus, featureStagePath } from "./stage";
  */
 
 /**
- * How often the grill surfaces re-read the feature and its job events.
- * Single spelling of the concept: both the full-page grill chat and the Spec
- * stage page's draft-state refresh use this, and it is the ADR 006 item 8
- * polling interval — a WebSocket relay remains a tracked follow-up, not
- * something this page changes.
+ * How often the grill surface re-reads the feature and its job events while the
+ * relay is **not** live.
+ *
+ * The relay landed (ADR 019), so this is the fallback rather than the norm: the
+ * grill page polls at `LIVE_SAFETY_POLL_INTERVAL_MS` (30s) once its subscription
+ * is confirmed and at this interval otherwise. Both paths matter — the fast one
+ * is what a deployment without the relay gets, and the slow one is what keeps a
+ * silently-dead relay at "a bit stale" rather than "wrong forever".
+ *
+ * (The previous comment here said a relay "remains a tracked follow-up, not
+ * something this page changes", which stopped being true when the grill page was
+ * converted; corrected rather than left to mislead the next reader.)
  */
 export const GRILL_POLL_INTERVAL_MS = 2000;
 

@@ -1,11 +1,13 @@
 "use client";
 
 import { ErrorMessage } from "@/components/ui/error-message";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { RunRecording } from "@/components/tests/run-recording";
 import { FilterToggleGroup } from "@/components/ui/filter-toggle";
 import { fetchFeatureTestingResults } from "@/lib/api";
+import { useLiveFeatureRelay } from "@/components/features/use-live-feature-relay";
+import { pollIntervalMsForRelay } from "@/lib/features/live-relay";
 import {
   isFailingRun,
   runFailureReason,
@@ -15,6 +17,7 @@ import {
   tallyLine,
   tallyRuns,
   testingHeadline,
+  TESTING_POLL_INTERVAL_MS,
 } from "@/lib/features/testing";
 import type { TestingRun, TestingResults } from "@/lib/features/types";
 import { cn } from "@/lib/utils";
@@ -57,6 +60,18 @@ const toneClasses = {
  *   needs;
  * - outcomes are colour-coded, since a failed run and a passing one previously
  *   read the same at a glance.
+ *
+ * **Issue #25 added the live relay, and this surface was the worse of the two it
+ * converted.** It did not poll at all — it fetched once on mount and nothing ever
+ * refreshed it — so a run's steps, and its final report, only became visible on a
+ * manual reload. The panel now subscribes to the feature's relay topic and
+ * re-reads on signal (a burst coalesces into one request), with
+ * `TESTING_POLL_INTERVAL_MS` as the fallback when the relay is not live.
+ *
+ * ADR 019 item 7 shapes the conversion: a socket frame carries a *signal*, never
+ * state, so `fetchFeatureTestingResults` remains the only thing that puts a value
+ * on screen and a frame cannot disagree with the API. It also means an unread
+ * result is never invented — the panel re-reads and shows whatever the API says.
  */
 export function TestingPanel({ projectId, featureId }: TestingPanelProps) {
   const [results, setResults] = useState<TestingResults | null>(null);
@@ -64,25 +79,60 @@ export function TestingPanel({ projectId, featureId }: TestingPanelProps) {
   const [error, setError] = useState<string | null>(null);
   const [subview, setSubview] = useState<Subview>("all");
 
+  /*
+   * A ref rather than an effect-local flag, because a re-read now arrives from
+   * two places — the interval and a relay frame — and only a ref guards both.
+   */
+  const mountedRef = useRef(true);
   useEffect(() => {
-    let active = true;
-    setLoaded(false);
-    fetchFeatureTestingResults(projectId, featureId)
-      .then((data) => {
-        if (!active) return;
-        setResults(data);
-        setError(null);
-      })
-      .catch(() => {
-        if (active) setError("Unable to load test results.");
-      })
-      .finally(() => {
-        if (active) setLoaded(true);
-      });
+    mountedRef.current = true;
     return () => {
-      active = false;
+      mountedRef.current = false;
     };
+  }, []);
+
+  const poll = useCallback(async () => {
+    try {
+      const data = await fetchFeatureTestingResults(projectId, featureId);
+      if (!mountedRef.current) return;
+      setResults(data);
+      setError(null);
+    } catch {
+      if (mountedRef.current) setError("Unable to load test results.");
+    } finally {
+      if (mountedRef.current) setLoaded(true);
+    }
   }, [projectId, featureId]);
+
+  const { isLive } = useLiveFeatureRelay({
+    projectId,
+    featureId,
+    onEvent: () => void poll(),
+  });
+
+  /*
+   * Two effects rather than one, and the split is load-bearing. This one owns the
+   * identity-scoped read and the loading state; the next owns only the interval.
+   *
+   * Combining them would make an `isLive` change clear `loaded` — so the panel
+   * would blank to "Loading test results…" the instant the relay connected, and
+   * blank again if it dropped. That is a visible regression caused purely by the
+   * socket's health, which is exactly the coupling ADR 019 item 7 exists to
+   * prevent: the relay is optional, so its status must not change what is on
+   * screen.
+   */
+  useEffect(() => {
+    setLoaded(false);
+    void poll();
+  }, [poll]);
+
+  useEffect(() => {
+    const interval = setInterval(
+      () => void poll(),
+      pollIntervalMsForRelay({ isLive, fallbackMs: TESTING_POLL_INTERVAL_MS }),
+    );
+    return () => clearInterval(interval);
+  }, [poll, isLive]);
 
   const runs = results?.runs ?? [];
   const tally = tallyRuns(runs);

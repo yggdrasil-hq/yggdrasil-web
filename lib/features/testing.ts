@@ -2,6 +2,25 @@ import { runCounts, runTone, type RunTone } from "./test-runs";
 import type { TestingResults, TestingRun } from "./types";
 
 /**
+ * How often the feature Testing tab re-reads its results.
+ *
+ * Issue #25 converted this surface to the live relay, and it needed a constant
+ * that did not exist because the tab *never polled*: it fetched once on mount and
+ * nothing ever refreshed it. So a user watching a test run had to reload the page
+ * to see a result land, and a run that failed mid-view kept showing its previous
+ * state.
+ *
+ * That makes this the one converted surface where the fallback interval is new
+ * behaviour rather than a widening of an existing poll — with the relay down the
+ * tab now polls at this interval instead of never updating. Above
+ * `GRILL_POLL_INTERVAL_MS` deliberately: a test run's shape is a series of steps
+ * reported over minutes, not a token stream, so 2s buys nothing a 5s poll does
+ * not, and the relay covers the case that matters (a result arriving while the
+ * user is looking at it).
+ */
+export const TESTING_POLL_INTERVAL_MS = 5000;
+
+/**
  * Whether the feature's Testing stage has anything that reads as a failure.
  *
  * Issue #40: this used to be `run.report?.failed ?? 0 > 0`, which is the same

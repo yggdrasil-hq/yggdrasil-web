@@ -94,14 +94,15 @@ describe("askUserQuestionFor", () => {
   });
 
   /*
-   * The case the coordinator flagged, and it is reachable rather than defensive:
-   * the API builds the form from `parsed.data.options ? … : null`, and an empty
-   * array is *truthy* in JavaScript — so `options: []` arrives as a form with
-   * nothing in it, and the API's schema constrains options with `.max(20)` and no
-   * `.min(1)`, so nothing rejects it upstream either.
+   * Defensive, not a gap being compensated for: the API rejects an empty
+   * `options` array in its own `superRefine`, so a row carrying one cannot come
+   * from this API. The assertion is that the client degrades to prose rather than
+   * building an unsatisfiable control — a picker with no choices and a Submit that
+   * can never enable is a dead end that looks like a loaded state.
    *
-   * A control here is a dead end: a picker with no choices and a Submit that can
-   * never enable. Prose at least keeps the question readable.
+   * (This note previously asserted the opposite — that the API did not guard it —
+   * on the strength of the array modifier lacking a `.min(1)`. The guard is a
+   * `superRefine`, which reading the field definition alone does not show.)
    */
   it("returns null for a form with no options, rather than a dead control", () => {
     expect(askUserQuestionFor(event({ questionForm: form({ options: [] }) }))).toBeNull();
