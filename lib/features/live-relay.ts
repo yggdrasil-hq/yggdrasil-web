@@ -12,8 +12,20 @@ import type { FeatureEvent } from "./types";
  *    because the poll loop is the same code path either way (the grill page
  *    polls at 2s when the relay is not live, and at a slow safety interval when
  *    it is).
- *  - Reconnecting needs no missed-event bookkeeping: the page re-reads on
- *    connect, so the REST read *is* the catch-up.
+ *  - Reconnecting needs no missed-event bookkeeping: **every** surface re-reads
+ *    when the relay becomes live, so the REST read *is* the catch-up. That re-read
+ *    is a dependency of each surface's poll effect on the live status, which is
+ *    what makes the claim true here rather than only in the module that makes it:
+ *    the subscription is registered server-side only once the `subscribe` frame
+ *    has been authorised and the hub keeps no backlog, so the read at that moment
+ *    is the only thing covering the window in between. The safety interval is the
+ *    bound for a relay that never connects at all.
+ *
+ *    Issue #98: this said "the page re-reads on connect" when two of the four
+ *    surfaces did not — they restarted the interval and read nothing — so the
+ *    re-read is now the thing
+ *    `src/features/relay-surfaces.test.ts` checks every subscribed surface for,
+ *    rather than a property asserted from one place about four others.
  */
 
 /**

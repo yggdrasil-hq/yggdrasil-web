@@ -111,22 +111,44 @@ export function TestingPanel({ projectId, featureId }: TestingPanelProps) {
   });
 
   /*
-   * Two effects rather than one, and the split is load-bearing. This one owns the
-   * identity-scoped read and the loading state; the next owns only the interval.
+   * Two effects, split by what each is *scoped to* rather than by what it calls,
+   * and both halves of the split are load-bearing.
    *
-   * Combining them would make an `isLive` change clear `loaded` — so the panel
-   * would blank to "Loading test results…" the instant the relay connected, and
-   * blank again if it dropped. That is a visible regression caused purely by the
-   * socket's health, which is exactly the coupling ADR 019 item 7 exists to
-   * prevent: the relay is optional, so its status must not change what is on
-   * screen.
+   * The first is identity-scoped, and it is the only thing allowed to clear
+   * `loaded`. `loaded` means "this is not the current feature's results yet", so it
+   * may only be cleared when the identity changes. It used to run alongside the
+   * read, which meant an `isLive` change cleared it — the panel blanking to
+   * "Loading test results…" the instant the relay connected, and blanking again if
+   * it dropped. That is a visible regression caused purely by the socket's health,
+   * which is exactly the coupling ADR 019 item 7 exists to prevent: the relay is
+   * optional, so its status must not change what is already on screen.
+   *
+   * The dependency list is the identity and nothing else. The body does not read
+   * either id, and that is deliberate rather than an oversight — they are what the
+   * effect is *scoped to*.
+   *
+   * The second is keyed on `[poll, isLive]` and **reads immediately as well as on
+   * its interval**, so a relay connect is a catch-up and not only a change of
+   * period. That read is not a duplicate of the mount read: the server registers
+   * this subscription only once the `subscribe` frame has been authorised, and the
+   * hub keeps no backlog (`api/src/live/hub.ts` fans out to whoever is subscribed
+   * at that instant), so events published between the mount read and that
+   * registration reach nobody. Deferring the read to the interval holds that window
+   * open for up to `LIVE_SAFETY_POLL_INTERVAL_MS`.
+   *
+   * Issue #98: the grill transcript and the build-progress panel were converted
+   * this way in #25; this panel and the design-session view kept the read in its
+   * own effect keyed on `[poll]` alone, and the shared module's "the page re-reads
+   * on connect" was therefore true of two surfaces rather than four.
+   * `src/features/relay-surfaces.test.ts` is what keeps the two shapes from
+   * drifting apart again.
    */
   useEffect(() => {
     setLoaded(false);
-    void poll();
-  }, [poll]);
+  }, [projectId, featureId]);
 
   useEffect(() => {
+    void poll();
     const interval = setInterval(
       () => void poll(),
       pollIntervalMsForRelay({ isLive, fallbackMs: TESTING_POLL_INTERVAL_MS }),

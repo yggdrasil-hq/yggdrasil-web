@@ -85,19 +85,28 @@ export function DesignSessionClient({
   });
 
   /*
-   * Two effects rather than one, matching `TestingPanel`, and the split is
-   * load-bearing there for a reason that applies here too: this one owns the
-   * identity-scoped read, and the next owns only the interval. Combining them
-   * would re-run the immediate read on every `isLive` transition — two or three
-   * extra fetches on mount, from `off` to `connecting` to `live` — which is work
-   * caused purely by the socket's health on a surface that must behave the same
-   * whether or not the relay is available.
+   * One effect, keyed on both the identity and the relay's status, so it restarts
+   * — reading immediately — when either changes.
+   *
+   * Issue #98: this used to be two, with the immediate read in an effect keyed on
+   * `[poll]` alone, and the justification given for the split was a **miscount**. It
+   * said combining them would re-run the immediate read "two or three extra fetches
+   * on mount, from `off` to `connecting` to `live`" — but `isLive` is a boolean
+   * (`status === "live"`), so `off` and `connecting` are both false and the flag
+   * flips **once** per successful connect. The cost is one fetch, and that fetch is
+   * the point of it rather than the price of it: the server registers this
+   * subscription only once the `subscribe` frame has been authorised, and the hub
+   * keeps no backlog, so events published between the mount read and that
+   * registration reach nobody. Reading again on the transition closes that window;
+   * leaving it to the interval holds it open for up to `LIVE_SAFETY_POLL_INTERVAL_MS`.
+   *
+   * The Testing panel still keeps two effects, because there the loading state must
+   * stay clear of the status change. This surface has no loading state, so there is
+   * nothing to keep clear and one effect is the whole rule.
+   * `src/features/relay-surfaces.test.ts` checks both shapes against it.
    */
   useEffect(() => {
     void poll();
-  }, [poll]);
-
-  useEffect(() => {
     const interval = setInterval(
       () => void poll(),
       pollIntervalMsForRelay({ isLive, fallbackMs: DESIGN_POLL_INTERVAL_MS }),
