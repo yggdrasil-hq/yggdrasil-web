@@ -21,6 +21,7 @@ import type {
   GithubAccessResponse,
   JobModelDefault,
   JobRecordingResponse,
+  JobSessionResponse,
   ModelConfigInput,
   Notification,
   NotificationPreferenceEntry,
@@ -1724,6 +1725,28 @@ export async function fetchJobRecording(
     credentials: "include",
   });
   return parseJson<JobRecordingResponse>(response);
+}
+
+/**
+ * ADR 032: what became of one run's Pi session.
+ *
+ * Answers for every run, including one with no session at all — the state is
+ * `unknown` rather than the request failing, because "this run did not save a
+ * session" is an ordinary answer the Spec page has to render rather than an error.
+ * See api/src/sessions/routes.ts, which explains why the metadata route never 404s.
+ *
+ * No bytes are fetched here: a session is megabytes of raw JSONL, and the UI needs
+ * the state and the size, not the transcript it already displays in rendered form.
+ */
+export async function fetchJobSession(
+  projectId: string,
+  jobId: string,
+): Promise<JobSessionResponse> {
+  const response = await fetch(apiUrl(`/projects/${projectId}/jobs/${jobId}/session`), {
+    cache: "no-store",
+    credentials: "include",
+  });
+  return parseJson<JobSessionResponse>(response);
 }
 
 /**

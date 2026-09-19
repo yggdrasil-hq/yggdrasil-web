@@ -268,6 +268,17 @@ export interface FeatureEventsResponse {
    */
   jobKind: string | null;
   /**
+   * ADR 032 item 1: the job these events belong to, or null when the feature has
+   * no job at all.
+   *
+   * Every artifact route is job-scoped, and a page holding only a feature id cannot
+   * build one — so without this the Spec surface could not ask whether *this* run's
+   * session was saved, which is what ADR 032 item 5 requires a user to be told before
+   * a restart. It is the same generation of information as `jobKind` and
+   * `jobStatus` beside it, rather than a new kind of thing.
+   */
+  jobId: string | null;
+  /**
    * The transcript turn this run's seed was rewound to, when the run came from
    * a per-message "restart from here" (ADR 024). Null for an ordinary run.
    */
@@ -1237,6 +1248,55 @@ export interface JobRecording {
  */
 export interface JobRecordingResponse {
   recording: JobRecording | null;
+}
+
+/**
+ * ADR 032 item 5: what became of one run's Pi session.
+ *
+ * Five states rather than the recording's three, and the extra two are the point:
+ * `not_collected` (Pi answered and there was no session — a fact about the run) and
+ * `unavailable` (a session may exist; this run could not obtain it) are different
+ * facts with different remedies, and collapsing them makes a transient retrieval
+ * failure indistinguishable from a run that never got far enough to have a session.
+ *
+ * `unknown` is what "the API was never told anything" means — an install with
+ * session collection switched off reports this and never `not_collected`, so the UI
+ * must not describe it as the run's fault.
+ */
+export type JobSessionState =
+  | "available"
+  | "expired"
+  | "not_collected"
+  | "unavailable"
+  | "unknown";
+
+export interface JobSession {
+  jobId: string;
+  state: JobSessionState;
+  /** The Orchestrator's own outcome, echoed verbatim; null when no row exists. */
+  outcome: "collected" | "not_collected" | "unavailable" | null;
+  sessionId: string | null;
+  byteSize: number | null;
+  expiresAt: string | null;
+  purgedAt: string | null;
+  createdAt: string | null;
+  /**
+   * Whether ADR 032 item 3's non-destructive "resume from here" could be attempted.
+   *
+   * False does **not** mean no restart is offered: ADR 024's destructive rewind
+   * remains available as the fallback and needs nothing but the transcript.
+   */
+  canFork: boolean;
+}
+
+/**
+ * `session` is never null but its `state` may be `unknown`, and there is a second
+ * field saying so in words — the API composes the sentence, so the UI cannot drift
+ * from the service about what a state means.
+ */
+export interface JobSessionResponse {
+  session: JobSession;
+  explanation: string;
 }
 
 // --- Resource allocation caps (ADR 030) ---

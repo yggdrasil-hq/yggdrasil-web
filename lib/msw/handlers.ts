@@ -26,6 +26,7 @@ import {
   getMockDeployStatus,
   getMockFeature,
   getMockFeatureEvents,
+  getMockJobSession,
   getMockDesign,
   getMockDesignEvents,
   getMockDesigns,
@@ -503,6 +504,23 @@ export const handlers = [
 
       return HttpResponse.json(updated);
     },
+  ),
+
+  /*
+   * ADR 032: what became of a run's Pi session. Job-scoped, like the recordings and
+   * screenshots reads, because a session belongs to one run.
+   *
+   * Mock mode has to answer this or the Spec surface's session notice renders as a load
+   * failure — which the coverage guard in `src/msw/coverage.test.ts` flags the moment
+   * the call is added (issue #64's ratchet).
+   *
+   * Answers 200 for **every** job id, including one the fixture has never heard of:
+   * the real route reports `unknown` rather than 404ing, because "this run did not save
+   * a session" is an ordinary answer the page renders. A 404 here would make mock mode
+   * exercise a failure path the real client cannot reach.
+   */
+  http.get(apiUrl("/projects/:projectId/jobs/:jobId/session"), ({ params }) =>
+    HttpResponse.json(getMockJobSession(String(params.jobId))),
   ),
 
   http.get(apiUrl("/projects/:projectId/features/:featureId/events"), ({ params }) => {
