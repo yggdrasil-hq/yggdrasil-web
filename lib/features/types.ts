@@ -272,7 +272,56 @@ export interface FeatureEventsResponse {
    * a per-message "restart from here" (ADR 024). Null for an ordinary run.
    */
   restartedFromEventId: string | null;
+  /**
+   * Issue #92: how long this grill has been waiting on an unanswered question, or
+   * null when nobody is being waited on.
+   *
+   * **Non-null *is* the "waiting" signal**, which is why it is a whole object
+   * rather than a nullable timestamp inside a wider shape: the API deliberately
+   * collapses "not waiting" and "waiting with unknown fields" into the same
+   * value, so this read is unconditional rather than a three-state check.
+   *
+   * It is on *this* read, not the feature read, because the grill surface already
+   * polls here — the age travels beside the events it was derived from, so a
+   * client needs no second call and cannot compute a number the server would
+   * disagree with. The feature read keeps owning `awaitingUserInput`, which is the
+   * *whether*; this is the *when*.
+   */
+  awaitingReply: AwaitingReply | null;
   events: FeatureEvent[];
+}
+
+/**
+ * Issue #92: an open grill question, as the API reports it.
+ *
+ * **`since` rather than a precomputed age, deliberately.** An age computed
+ * server-side at read time is already stale by the time it renders and grows
+ * staler the longer the page is open, so the client does the arithmetic against
+ * its own `Date.now()`. That also keeps a ticking display off the poll: the age
+ * advances every second while the network read happens once every few seconds.
+ */
+export interface AwaitingReply {
+  /** When the unanswered question was asked (ISO 8601). */
+  since: string;
+  /**
+   * The bound on one unanswered question, in milliseconds.
+   *
+   * This is the API's *view* of a value the **Orchestrator** owns — the two
+   * services share no env file, so the API carries a mirror rather than reading
+   * it. `timeoutSource` is what says whether this number is that mirror's
+   * configured value or merely its shipped default.
+   */
+  timeoutMs: number;
+  /**
+   * Whether `timeoutMs` was configured on the API or is its shipped default.
+   *
+   * **This is the field that decides whether a countdown may be rendered.** With
+   * `"default"` the number is an *assumption* about the other service's
+   * environment, not a statement of it — an operator who raised the bound on the
+   * Orchestrator alone would make a countdown count to the wrong moment, which is
+   * worse than showing no deadline at all. See `lib/features/grill-wait.ts`.
+   */
+  timeoutSource: "configured" | "default";
 }
 
 /** A project's most recent deployment operation (ADR 013 addendum, widened to rollbacks by ADR 022) — no `events`, unlike FeatureEventsResponse: deploy and rollback runs synchronously in the Orchestrator with no curated event stream. */

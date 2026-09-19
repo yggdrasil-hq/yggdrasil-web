@@ -3,6 +3,7 @@ import { hasFullModelConfigBundle, ORG_ROLE_LABELS } from "@/lib/features/types"
 import type {
   ActionQueueItem,
   AgenticReviewResponse,
+  AwaitingReply,
   DeployHistoryResponse,
   DeployKind,
   DeployStatus,
@@ -324,6 +325,20 @@ export const mockJobStatuses: Record<string, JobStatus> = {
 };
 
 export const mockLastErrors: Record<string, string> = {};
+
+/**
+ * Issue #92: the mock layer's `awaitingReply`, keyed by feature.
+ *
+ * Absent means "nobody is being waited on", which is the same collapse the API
+ * makes — so a test that wants a waiting grill sets this rather than setting four
+ * nullable members.
+ *
+ * Seeded rather than always-null deliberately. A mock that can never produce a
+ * field cannot exercise the UI that renders it, which is how the mock layer here
+ * came to be 43 handlers behind the app (#64); the field is part of the response
+ * contract, so the mock represents it.
+ */
+export const mockAwaitingReplies: Record<string, AwaitingReply> = {};
 
 export const mockDesignSessions: Record<string, DesignSession> = {};
 export const mockDesignEvents: Record<string, FeatureEvent[]> = {};
@@ -1165,6 +1180,9 @@ export function getMockFeatureEvents(featureId: string): FeatureEventsResponse {
     // mirror an ordinary first-attempt grill run.
     jobKind: "spec_grill",
     restartedFromEventId: null,
+    // Issue #92: present exactly when a test seeds a wait, mirroring the API's
+    // own collapse of "not waiting" and "waiting with unknown fields".
+    awaitingReply: mockAwaitingReplies[featureId] ?? null,
     events: mockJobEvents[featureId] ?? [],
   };
 }
