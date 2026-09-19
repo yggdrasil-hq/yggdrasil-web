@@ -5,12 +5,10 @@ import { LoadFailure } from "@/components/ui/load-failure";
 import { fetchFeatureAgenticReview } from "@/lib/api";
 import type { AgenticReview } from "@/lib/features/types";
 import {
-  agenticReviewToView,
   blockingLabelFor,
   reviewDetail,
   reviewTimestampLabel,
 } from "@/lib/features/agentic-review";
-import { FilterToggleGroup } from "@/components/ui/filter-toggle";
 import { cn } from "@/lib/utils";
 
 interface AgenticReviewPanelProps {
@@ -20,9 +18,38 @@ interface AgenticReviewPanelProps {
 
 /**
  * ADR 015 items 13-16 / Track B6: the Agentic Review stage for a feature.
- * Mirrors design/.../agentic-review/index.html: an Approved vs
- * Changes-requested subview, a verdict banner, and the per-location review
- * comment list (blocking flags).
+ * Mirrors design/.../agentic-review/index.html: a verdict banner and the review
+ * body — the per-location comment list when the producer gives structure, the
+ * reviewer's prose when it does not.
+ *
+ * **The Approved / Changes-requested subview was removed (issue #74).** It is
+ * worth recording why, because the wireframe *does* show those two tabs and this
+ * now deliberately diverges from it.
+ *
+ * The `subview` state was read by nothing but the control itself, so pressing an
+ * option changed nothing on screen — a segmented control is an affordance that
+ * asserts something will change, so a user who pressed "Changes requested" on an
+ * approved review was told something false about the page.
+ *
+ * It was also the wrong kind of filter for this data, which is the more
+ * interesting reason. A review carries **one** verdict, so "filter by verdict"
+ * cannot partition anything: every finding belongs to the same verdict. The
+ * control was modelling the panel as if it held a *list* of reviews.
+ *
+ * That is exactly what the wireframe does — it is a static mock with both panels
+ * present as CSS-targeted siblings, and its own `.design-note` says so: they are
+ * there "only to show the shape of the idea". The design intent did not survive
+ * contact with a real page holding one review.
+ *
+ * **Why not the obvious alternative — filter blocking vs non-blocking findings?**
+ * The issue suggested it, and it would have been reasonable if the data supported
+ * it. It does not: `PublicAgenticReviewComment` has no `blocking` field at all, so
+ * `findingFromComment` defaults every finding to `blocking: true` and a filter on
+ * that flag has nothing to split. It would *appear* to work in development, where
+ * the MSW fixture deliberately carries one non-blocking finding to exercise the
+ * tint, and then quietly do nothing against the real API — the worst shape a
+ * filter can have. It becomes worth building only when #73 gives the producer a
+ * way to mark a finding non-blocking, and the API a field to carry it.
  *
  * **Three outcomes, not two (issue #59).** This panel used to have one failure
  * path and one empty path, and the endpoint 404'd, so *every* visit showed the
@@ -49,14 +76,6 @@ export function AgenticReviewPanel({ projectId, featureId }: AgenticReviewPanelP
   const [review, setReview] = useState<AgenticReview | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  /**
-   * Non-nullable on purpose: this is a filter with a default, never "no filter".
-   * The review's own `verdict` is non-null by the time it reaches here — a review
-   * with no verdict is mapped to `null` (no review) rather than to a review whose
-   * verdict is null, which is what used to make this panel render the
-   * changes-requested banner for a review that had not happened.
-   */
-  const [subview, setSubview] = useState<NonNullable<AgenticReview["verdict"]>>("approved");
 
   useEffect(() => {
     let active = true;
@@ -66,7 +85,6 @@ export function AgenticReviewPanel({ projectId, featureId }: AgenticReviewPanelP
         if (!active) return;
         setReview(data);
         setError(null);
-        if (data?.verdict) setSubview(data.verdict);
       })
       .catch((loadError: unknown) => {
         if (!active) return;
@@ -84,7 +102,6 @@ export function AgenticReviewPanel({ projectId, featureId }: AgenticReviewPanelP
     };
   }, [projectId, featureId]);
 
-  const view = review ? agenticReviewToView(review) : null;
   const reviewedAt = review ? reviewTimestampLabel(review) : null;
   const detail = review ? reviewDetail(review) : null;
   /**
@@ -123,19 +140,9 @@ export function AgenticReviewPanel({ projectId, featureId }: AgenticReviewPanelP
         </div>
       ) : null}
 
-      {loaded && !error && review && view ? (
+      {loaded && !error && review ? (
         <div className="mt-4">
-          <FilterToggleGroup
-            label="Review verdict filter"
-            options={[
-              { id: "approved", label: "Approved" },
-              { id: "changes_requested", label: "Changes requested" },
-            ] as const}
-            value={subview}
-            onChange={setSubview}
-          />
-
-          <div className="mt-4">
+          <div>
             {/*
              * The banner names the verdict and, when it can, the count. It
              * deliberately does **not** quote the summary any more: the summary is
@@ -143,7 +150,7 @@ export function AgenticReviewPanel({ projectId, featureId }: AgenticReviewPanelP
              * read as two separate findings. The count phrase is dropped entirely
              * when the findings are prose, because there is no number to give.
              */}
-            {view.verdict === "approved" ? (
+            {review.verdict === "approved" ? (
               <div className="mb-4 rounded-md border border-status-approved/30 bg-status-approved/10 px-4 py-3 text-sm text-mist">
                 <span className="text-status-approved">&#9679;</span> Approved
                 {blockingLabel ? ` — ${blockingLabel} found` : ""}. Proceeding to Manual
