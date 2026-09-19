@@ -513,6 +513,38 @@ export const handlers = [
     return HttpResponse.json(getMockFeatureEvents(String(params.featureId)));
   }),
 
+  /*
+   * Issue #28 part 2. Both are feature-scoped reads the Spec stage now makes, so
+   * mock mode has to answer them or the new surfaces render as load failures
+   * against the mocks — which is exactly what the coverage guard in
+   * `src/msw/coverage.test.ts` flagged when these calls were added (issue #64).
+   *
+   * An empty `earlierRuns` is the honest default here: the shared mock feature has
+   * not been rewound, and a fabricated superseded run would make every mock session
+   * advertise a discarded conversation that never existed.
+   */
+  http.get(apiUrl("/projects/:projectId/features/:featureId/grill-runs"), ({ params }) => {
+    const feature = getMockFeature(String(params.projectId), String(params.featureId));
+    if (!feature) {
+      return HttpResponse.json({ error: "Feature not found" }, { status: 404 });
+    }
+    return HttpResponse.json({ earlierRuns: [] });
+  }),
+
+  http.get(
+    apiUrl("/projects/:projectId/features/:featureId/jobs/:jobId/events"),
+    ({ params }) => {
+      const feature = getMockFeature(String(params.projectId), String(params.featureId));
+      if (!feature) {
+        return HttpResponse.json({ error: "Feature not found" }, { status: 404 });
+      }
+      // The same events the latest-job read returns, since the mock feature has a
+      // single run: there is no second job for a job-scoped read to distinguish
+      // between. A real rewound run is what the API's own tests cover.
+      return HttpResponse.json(getMockFeatureEvents(String(params.featureId)));
+    },
+  ),
+
   http.post(apiUrl("/projects/:projectId/designs"), async ({ params, request }) => {
     const session = createMockDesignSession(String(params.projectId), await request.json() as {
       name: string;

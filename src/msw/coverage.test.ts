@@ -172,11 +172,13 @@ describe("the repo's own mock coverage (#64)", () => {
     // arrived with its handler rather than as ledger debt:
     //   #35  `/organizations/readiness` (middleware, every navigation)
     //   #31  `/projects/:projectId/timezone` (the timezone picker's write)
+    //   #28  the two feature-scoped grill-run reads (Spec page: the earlier-runs
+    //        list and a superseded run's transcript)
     // Pinned deliberately so the next path has to be counted rather than absorbed.
     expect({
       called: coverage.called.length,
       handled: coverage.handled.length,
-    }).toEqual({ called: 88, handled: 52 });
+    }).toEqual({ called: 90, handled: 54 });
   });
 
   /**

@@ -7,7 +7,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Markdown } from "@/components/markdown";
+import { GrillBubble, GrillEvent } from "@/components/features/grill-transcript";
 import { useFeatureDetail } from "@/components/features/feature-detail-context";
 import {
   cancelFeature,
@@ -20,14 +20,12 @@ import {
 import {
   canReplyToGrill,
   canRetryGrill,
-  grillBubbleFor,
   grillPlaceholder,
   grillStoppedMessage,
   GRILL_POLL_INTERVAL_MS,
   isGrillLive,
   isGrillProcessing,
   isGrillStopped,
-  type GrillBubbleTone,
 } from "@/lib/features/grill";
 import { featureStagePath } from "@/lib/features/stage";
 import {
@@ -597,12 +595,6 @@ function finishedCopy(status: FeatureStatus): string {
   }
 }
 
-function GrillEvent({ event }: { event: FeatureEvent }) {
-  const bubble = grillBubbleFor(event);
-  if (!bubble) return null;
-  return <GrillBubble label={bubble.label} tone={bubble.tone} content={bubble.content} />;
-}
-
 /**
  * ADR 024's per-turn "restart from here" control.
  *
@@ -658,33 +650,6 @@ function TurnRestartControl({
         <Button size="sm" variant="ghost" disabled={busy} onClick={onCancel}>
           Cancel
         </Button>
-      </div>
-    </div>
-  );
-}
-
-function GrillBubble({
-  label,
-  tone = "default",
-  content,
-}: {
-  label: string;
-  tone?: GrillBubbleTone;
-  content: string;
-}) {
-  return (
-    <div className={`flex ${tone === "user" ? "justify-end" : "justify-start"}`}>
-      <div
-        className={`w-[90%] max-w-3xl rounded-md border p-3 ${
-          tone === "user" ? "border-rime bg-surface-03" : "border-rime-soft bg-surface-02"
-        }`}
-      >
-        <p
-          className={`text-xs font-medium ${tone === "error" ? "text-red-400" : "text-shadow"}`}
-        >
-          {label}
-        </p>
-        <Markdown content={content} className="mt-1" />
       </div>
     </div>
   );
