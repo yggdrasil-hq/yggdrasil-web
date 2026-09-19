@@ -45,6 +45,7 @@ import type {
   ProjectSecretMetadata,
   ProviderModelsResult,
   ProviderType,
+  ReadinessReport,
   RolesResponse,
   Test,
   TestRunHistoryEntry,
@@ -1040,6 +1041,29 @@ export async function fetchOrganizations(): Promise<Organization[]> {
     credentials: "include",
   });
   return parseJson<Organization[]>(response);
+}
+
+/**
+ * Issue #35: whether this user's organizations can host a project, and what is
+ * outstanding if they cannot.
+ *
+ * User-scoped rather than per-org (no `:organizationId`), because the question
+ * the entry gate asks is about the user's whole membership: entry is permitted
+ * when **any** org is ready, so asking about one org would answer a different
+ * question. The API's own doc explains why this is not folded into `/auth/me` —
+ * readiness costs a defaults read plus a model resolution per org, and it is only
+ * meaningful at the entry gate, so it is asked only there.
+ *
+ * A thrown error here is meaningful to the middleware, which treats an
+ * unreachable API as "do not gate" (the same posture as its existing `/auth/me`
+ * call): failing closed on a transient blip would lock every user out of the app.
+ */
+export async function fetchOrganizationReadiness(): Promise<ReadinessReport> {
+  const response = await fetch(apiUrl("/organizations/readiness"), {
+    cache: "no-store",
+    credentials: "include",
+  });
+  return parseJson<ReadinessReport>(response);
 }
 
 export async function createOrganization(input: {

@@ -580,6 +580,71 @@ export interface OrgMember {
   role: OrgRole;
 }
 
+// --- Onboarding readiness (issue #35, ADR 016 item 11 + ADR 018 item 6a) ---
+//
+// The shape of `GET /organizations/readiness`, documented in full at
+// `api/docs/concepts/onboarding-readiness.md`. It is served rather than derived
+// on the client for a reason worth stating here, because it is the reason this
+// file holds types at all instead of the browser recomputing them: "ready" was
+// once defined twice (the create gate's copy was weaker than ADR 018 item 6a),
+// and a third definition in the Web app is exactly how the signal and the gate
+// would drift apart again.
+
+/**
+ * One org-level prerequisite. `id` is stable (`cluster`, `model_defaults`) so a
+ * client *may* branch on it; `label` and `detail` are presentation. Kept as
+ * `string` rather than a union because the API derives the list from its own
+ * steps and a new one must not require a Web deploy to render.
+ */
+export interface ReadinessStep {
+  id: string;
+  label: string;
+  satisfied: boolean;
+  /** A sentence explaining an unmet step, or null when satisfied. */
+  detail: string | null;
+  /**
+   * Whether fixing this needs org-admin rights, decided by the API rather than
+   * inferred from `role` here — so a future step that any member can fix needs
+   * no client change.
+   */
+  requiresAdmin: boolean;
+  /** App-relative (no `/app` prefix), like a notification's `linkPath`. */
+  fixPath: string;
+  /**
+   * Model-defaults detail, present only for that step. The two arrays are
+   * separate because the remedy differs: one is "assign a model", the other is
+   * "the default you assigned no longer resolves". Collapsing them would send an
+   * admin to a form that already looks filled in.
+   */
+  missingModelKinds?: string[];
+  kindsWithoutDefault?: string[];
+  kindsThatDoNotResolve?: string[];
+}
+
+export interface OrganizationReadiness {
+  id: string;
+  name: string;
+  isPersonal: boolean;
+  role: OrgRole;
+  ready: boolean;
+  steps: ReadinessStep[];
+}
+
+export interface ReadinessReport {
+  /**
+   * True when **at least one** org the user belongs to is ready.
+   *
+   * Deliberately not about the personal org: an invitee whose own org nobody
+   * configured still has somewhere to work, and gating on the personal org
+   * would block them from the whole app for a reason they may not be able to
+   * fix. The client must not re-derive this — see the note above the types.
+   */
+  entryAllowed: boolean;
+  /** The org that permits entry, or null when none does. */
+  readyOrganizationId: string | null;
+  organizations: OrganizationReadiness[];
+}
+
 export interface OrgInvite {
   id: string;
   organizationId: string;
