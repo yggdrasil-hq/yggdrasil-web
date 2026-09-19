@@ -480,6 +480,43 @@ describe("createLiveRelay", () => {
     expect(relay.status()).toBe("connecting");
   });
 
+  /*
+   * ADR 033 §4's client half: **a version-1 client meeting a version-2 server ends up
+   * polling, not dead.**
+   *
+   * The frame sequence below is not invented — it is what the real version-2 API sends
+   * for a version-1 frame, recorded from
+   * `api/scripts/verify-live-relay/verify.cjs`'s `version1ClientDegradesToPolling`,
+   * which drives a real `ws` client at a real socket and prints these bytes. So the two
+   * halves of the degradation proof are pinned to the same sequence rather than to two
+   * independent guesses: the harness proves the *server* answers that way over the wire,
+   * and this proves the *real client* answers those frames by falling back.
+   *
+   * Three assertions, because "polling rather than dead" is three claims:
+   *
+   *  - `ready` announces version **2**, which is the one thing a client can compare —
+   *    the version bump has to match the wire or the signal is useless.
+   *  - The `error` frame leaves the relay `off`, which is the state the page's own fast
+   *    poll runs in. `off` (stopped) rather than `connecting` is the distinction that
+   *    matters: a refusal is not retryable, and a client that reconnected would spend a
+   *    minute in backoff before reaching the same poll.
+   *  - **No reconnect is scheduled at all**, which is what makes it "not dead" rather
+   *    than "not yet dead".
+   */
+  it("falls back to polling when a version-1 frame meets a version-2 server (ADR 033 §4)", () => {
+    const { relay, socket, scheduler, statuses } = buildRelay();
+    socket().onopen?.();
+
+    // The recorded sequence, in order.
+    socket().onmessage?.({ data: JSON.stringify({ type: "ready", protocolVersion: 2 }) });
+    socket().onmessage?.({ data: JSON.stringify({ type: "error", message: "Unrecognised frame" }) });
+
+    expect(relay.status()).toBe("off");
+    expect(statuses.at(-1)).toBe("off");
+    expect(scheduler.tasks).toHaveLength(0);
+    expect(socket().closed).toBe(true);
+  });
+
   it("backs off further on each successive failure", () => {
     const { socket, scheduler } = buildRelay();
     socket().onclose?.({ code: 1006 });
