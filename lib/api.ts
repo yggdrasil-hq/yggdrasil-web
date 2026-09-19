@@ -14,6 +14,7 @@ import type {
   DesignsResponse,
   Feature,
   FeatureEventsResponse,
+  FeatureGrillRunsResponse,
   FeatureJobModelOverride,
   FeatureModelConfigResponse,
   FeatureModelSecretMetadata,
@@ -725,6 +726,46 @@ export async function fetchFeatureEvents(
     cache: "no-store",
     credentials: "include",
   });
+  return parseJson<FeatureEventsResponse>(response);
+}
+
+/**
+ * Issue #28 part 2: a feature's **earlier** `spec_grill` runs, so the Spec page can
+ * offer what a rewind discarded. The API returns earlier runs only and says so in
+ * the response key; this reads it verbatim rather than filtering a full list.
+ */
+export async function fetchFeatureGrillRuns(
+  projectId: string,
+  featureId: string,
+): Promise<FeatureGrillRunsResponse> {
+  const response = await fetch(apiUrl(`/projects/${projectId}/features/${featureId}/grill-runs`), {
+    cache: "no-store",
+    credentials: "include",
+  });
+  return parseJson<FeatureGrillRunsResponse>(response);
+}
+
+/**
+ * Issue #28 part 2: one run's transcript, by job id — the read that makes a
+ * superseded run's conversation reachable.
+ *
+ * Deliberately separate from `fetchFeatureEvents`, which resolves the feature's
+ * *latest* job. The two answer different questions — "the current conversation"
+ * and "that one, the one I rewound away" — and collapsing them into one function
+ * with an optional job id would hide which a caller means.
+ *
+ * `awaitingReply` is absent from this response by design (see the API route): a
+ * terminal run is waiting on nothing, so there is no live wait to report.
+ */
+export async function fetchFeatureJobEvents(
+  projectId: string,
+  featureId: string,
+  jobId: string,
+): Promise<FeatureEventsResponse> {
+  const response = await fetch(
+    apiUrl(`/projects/${projectId}/features/${featureId}/jobs/${jobId}/events`),
+    { cache: "no-store", credentials: "include" },
+  );
   return parseJson<FeatureEventsResponse>(response);
 }
 

@@ -292,6 +292,37 @@ export interface FeatureEventsResponse {
 }
 
 /**
+ * Issue #28 part 2: one of a feature's **earlier** `spec_grill` runs.
+ *
+ * Only earlier runs are ever in this list — the API excludes the current one,
+ * because "which run is current" is a rule it owns (`earlierGrillRuns`) and the
+ * sibling `/events` read already answers it. So a client renders this array
+ * rather than filtering one: a browser that sliced off the last element itself
+ * would be re-implementing the rule, which is how the readiness predicate came to
+ * be derived client-side twice (#35/#89).
+ */
+export interface EarlierGrillRun {
+  jobId: string;
+  status: JobStatus;
+  createdAt: string;
+  /** Set when this run was itself produced by a rewind. */
+  restartedFromEventId: string | null;
+  /**
+   * The later run that rewound from this one, or null.
+   *
+   * **Not merely "the next run".** It is set only when a later run explicitly
+   * rewound from this one, so a run replaced by ADR 012's retry — nothing
+   * truncated, nothing discarded — has null here. The API resolves it; this type
+   * just carries it.
+   */
+  supersededByJobId: string | null;
+}
+
+export interface FeatureGrillRunsResponse {
+  earlierRuns: EarlierGrillRun[];
+}
+
+/**
  * Issue #92: an open grill question, as the API reports it.
  *
  * **`since` rather than a precomputed age, deliberately.** An age computed

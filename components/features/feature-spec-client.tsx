@@ -6,7 +6,21 @@ import { useEffect, useState } from "react";
 import { useFeatureDetail } from "@/components/features/feature-detail-context";
 import { Markdown } from "@/components/markdown";
 import { Button } from "@/components/ui/button";
-import { fetchFeature, fetchFeatureEvents, retryFeatureGrill, updateFeature } from "@/lib/api";
+import {
+  fetchFeature,
+  fetchFeatureEvents,
+  fetchFeatureGrillRuns,
+  retryFeatureGrill,
+  updateFeature,
+} from "@/lib/api";
+import {
+  describeEarlierRun,
+  earlierRunsSummary,
+  grillRunPath,
+} from "@/lib/features/grill-runs";
+import { runStatusLabel } from "@/lib/features/test-runs";
+import type { EarlierGrillRun } from "@/lib/features/types";
+import { formatDistanceToNow } from "date-fns";
 import { GRILL_POLL_INTERVAL_MS, grillRoutePath } from "@/lib/features/grill";
 import { featureStagePath } from "@/lib/features/stage";
 import { appRoute } from "@/lib/config";
@@ -31,6 +45,15 @@ export function FeatureSpecClient() {
   const [retrying, setRetrying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastError, setLastError] = useState<string | null>(null);
+  /**
+   * Issue #28 part 2: grill runs this feature has already been through, so a user
+   * who rewound by mistake can read what they lost.
+   *
+   * Fetched once rather than polled. The list changes only when a *new* run is
+   * dispatched, which navigates away from this page — so a poll would cost a
+   * request every tick to learn nothing.
+   */
+  const [earlierRuns, setEarlierRuns] = useState<EarlierGrillRun[]>([]);
 
   // Keep the draft textarea in sync with live updates from elsewhere (e.g.
   // the grill page's own polling populating adrMarkdown for the first time).
@@ -82,6 +105,22 @@ export function FeatureSpecClient() {
       active = false;
     };
   }, [projectId, featureId, feature.status, feature.adrApproved]);
+
+  useEffect(() => {
+    let active = true;
+    fetchFeatureGrillRuns(projectId, featureId)
+      .then((data) => {
+        if (active) setEarlierRuns(data.earlierRuns);
+      })
+      .catch(() => {
+        // Best-effort: the rest of the Spec stage is unaffected by this list
+        // failing, so it degrades to absent rather than to an error banner. The
+        // link to the current transcript is rendered unconditionally below.
+      });
+    return () => {
+      active = false;
+    };
+  }, [projectId, featureId]);
 
   async function handleSaveAdr() {
     setSaving(true);
@@ -181,6 +220,45 @@ export function FeatureSpecClient() {
       )}
 
       {error ? <ErrorMessage className="text-sm text-red-400">{error}</ErrorMessage> : null}
+
+      {/*
+        * Issue #28 part 2: what a rewind discarded.
+        *
+        * Rendered only when the API says there is something to show —
+        * `earlierRunsSummary` returns null for an empty list, so a feature on its
+        * first grill gets no section rather than a heading reading "0 earlier
+        * runs". The list itself is the API's, unsliced: which runs count as
+        * earlier is a rule it owns, and a client that filtered the array would be
+        * re-implementing it (#35/#89's mistake).
+        */}
+      {earlierRunsSummary(earlierRuns) ? (
+        <section className="rounded-card border border-rime bg-surface-01 p-6">
+          <h2 className="text-base font-semibold text-frost">
+            {earlierRunsSummary(earlierRuns)}
+          </h2>
+          <p className="mt-1 text-sm text-mist">
+            Each time the grill was restarted from a later turn, the conversation it
+            replaced was kept. These are read-only.
+          </p>
+          <ul className="mt-4 space-y-2">
+            {earlierRuns.map((entry) => (
+              <li key={entry.jobId}>
+                <Link
+                  href={appRoute(grillRunPath(projectId, featureId, entry.jobId))}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-rime px-3 py-2 text-sm hover:border-bifrost"
+                >
+                  <span className="text-frost">
+                    {describeEarlierRun(entry, runStatusLabel(entry.status))}
+                  </span>
+                  <span className="text-xs text-shadow">
+                    {formatDistanceToNow(new Date(entry.createdAt), { addSuffix: true })}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       {feature.status === "spec_ready" && (
         <section className="flex h-[calc(100vh-16rem)] min-h-[30rem] flex-col overflow-hidden rounded-card border border-rime bg-surface-01">
