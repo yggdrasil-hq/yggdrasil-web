@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchFeature, fetchFeatureEvents } from "@/lib/api";
 import { pollIntervalMsForRelay } from "@/lib/features/live-relay";
-import { useLiveFeatureRelay } from "@/components/features/use-live-feature-relay";
+import { useLiveRelay } from "@/components/features/use-live-relay";
 import type { Feature, FeatureEvent, JobStatus } from "@/lib/features/types";
 
 /**
@@ -97,9 +97,9 @@ export function BuildProgressPanel({
     }
   }, [projectId, featureId, onFeatureChange]);
 
-  const { isLive } = useLiveFeatureRelay({
+  const { isLive } = useLiveRelay({
     projectId,
-    featureId,
+    scope: { kind: "feature", id: featureId },
     onEvent: () => void poll(),
   });
 

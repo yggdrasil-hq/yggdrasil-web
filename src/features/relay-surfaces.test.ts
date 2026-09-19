@@ -48,7 +48,7 @@ describe("findRelayPollEffects", () => {
   it("accepts the shape the grill transcript and the build panel use", () => {
     const source = `
       function Surface() {
-        const { isLive } = useLiveFeatureRelay({ onEvent: () => void poll() });
+        const { isLive } = useLiveRelay({ onEvent: () => void poll() });
         useEffect(() => {
           void poll();
           const interval = setInterval(
@@ -74,7 +74,7 @@ describe("findRelayPollEffects", () => {
     // `isLive`, and the immediate read never re-runs.
     const source = `
       function Surface() {
-        const { isLive } = useLiveFeatureRelay({ onEvent: () => void poll() });
+        const { isLive } = useLiveRelay({ onEvent: () => void poll() });
         useEffect(() => {
           void poll();
         }, [poll]);
@@ -208,29 +208,33 @@ describe("findRelayPollEffects", () => {
 describe("findRelaySurfaces", () => {
   it("finds a surface from the hook it imports, and names the hook", () => {
     const source = `
-      import { useLiveFeatureRelay } from "@/components/features/use-live-feature-relay";
+      import { useLiveRelay } from "@/components/features/use-live-relay";
       export function Surface() {
-        const { isLive } = useLiveFeatureRelay({ projectId, featureId });
+        const { isLive } = useLiveRelay({ projectId, scope: { kind: "feature", id: featureId } });
         return null;
       }
     `;
 
     expect(findRelaySurfaces([{ path: "components/x.tsx", source }])).toEqual([
-      { path: "components/x.tsx", hooks: ["useLiveFeatureRelay"] },
+      { path: "components/x.tsx", hooks: ["useLiveRelay"] },
     ]);
   });
 
-  it("finds the design surface from its own hook", () => {
+  it("finds every scope's surface from the one hook (ADR 033 §3)", () => {
+    // The point of the generalisation, asserted: a design-session surface and a
+    // feature surface import the *same* module now, so discovery has one entry to
+    // look for. Before ADR 033 this needed a second hook module in the list, and a
+    // third scope would have needed a third.
     const source = `
-      import { useLiveDesignRelay } from "@/components/designs/use-live-design-relay";
+      import { useLiveRelay } from "@/components/features/use-live-relay";
       export function Surface() {
-        const { isLive } = useLiveDesignRelay({ projectId, sessionId });
+        const { isLive } = useLiveRelay({ projectId, scope: { kind: "design_session", id: sessionId } });
         return null;
       }
     `;
 
     expect(findRelaySurfaces([{ path: "components/y.tsx", source }])[0].hooks).toEqual([
-      "useLiveDesignRelay",
+      "useLiveRelay",
     ]);
   });
 
@@ -238,8 +242,8 @@ describe("findRelaySurfaces", () => {
     // Discovery has to be the *import*, or a page that merely talks about the
     // relay in a comment or a string is scanned as a surface.
     const source = `
-      // The grill page used to call useLiveFeatureRelay here.
-      const note = "useLiveFeatureRelay";
+      // The grill page used to call useLiveRelay here.
+      const note = "useLiveRelay";
       export const x = note;
     `;
 

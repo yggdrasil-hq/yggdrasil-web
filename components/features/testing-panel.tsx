@@ -6,7 +6,7 @@ import Link from "next/link";
 import { RunRecording } from "@/components/tests/run-recording";
 import { FilterToggleGroup } from "@/components/ui/filter-toggle";
 import { fetchFeatureTestingResults } from "@/lib/api";
-import { useLiveFeatureRelay } from "@/components/features/use-live-feature-relay";
+import { useLiveRelay } from "@/components/features/use-live-relay";
 import { pollIntervalMsForRelay } from "@/lib/features/live-relay";
 import {
   isFailingRun,
@@ -104,9 +104,9 @@ export function TestingPanel({ projectId, featureId }: TestingPanelProps) {
     }
   }, [projectId, featureId]);
 
-  const { isLive } = useLiveFeatureRelay({
+  const { isLive } = useLiveRelay({
     projectId,
-    featureId,
+    scope: { kind: "feature", id: featureId },
     onEvent: () => void poll(),
   });
 
