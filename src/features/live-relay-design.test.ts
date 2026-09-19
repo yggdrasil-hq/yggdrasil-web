@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createLiveRelay,
   designSessionEventFromFrame,
+  designSubscription,
   jobEventFromFrame,
   pollIntervalMsForRelay,
   type LiveFrame,
@@ -126,18 +127,52 @@ function makeScheduler() {
 }
 
 /**
- * The design protocol, verbatim from the API's frame vocabulary
- * (`api/src/live/types.ts`) — spelled here so a change to the frames shows up as a
- * test failure rather than as a socket that silently never confirms.
+ * The design protocol comes from its real home in `lib/` rather than being restated
+ * here, and that is a correction rather than a tidy-up.
+ *
+ * An earlier version of this file spelled the frames out inline. It passed — but it
+ * was verifying a *copy* of the protocol while the hook's own copy was uncovered:
+ * mutating the hook's `isSubscribed` to drop the session-id check changed nothing.
+ * That is the "a test that builds its own app only tests its own app" shape
+ * (#84), and the fix is to have one implementation both sides consume.
+ *
+ * The factory is also asserted directly below, for the same reason: a protocol
+ * written into a React hook is unreachable by tests, because this repo has no React
+ * testing library by design.
  */
 function designProtocol() {
-  return {
-    subscribeFrame: { type: "subscribe_design", projectId: PROJECT_ID, sessionId: SESSION_ID },
-    isSubscribed: (frame: LiveFrame) =>
-      frame.type === "subscribed_design" && frame.sessionId === SESSION_ID,
-    isEventFrame: (frame: LiveFrame) => designSessionEventFromFrame(frame) !== null,
-  };
+  return designSubscription({ projectId: PROJECT_ID, sessionId: SESSION_ID });
 }
+
+describe("designSubscription (#25)", () => {
+  const protocol = designProtocol();
+
+  it("subscribes by naming the project and the session", () => {
+    expect(protocol.subscribeFrame).toEqual({
+      type: "subscribe_design",
+      projectId: PROJECT_ID,
+      sessionId: SESSION_ID,
+    });
+  });
+
+  it("accepts only a confirmation naming this session", () => {
+    expect(protocol.isSubscribed({ type: "subscribed_design", sessionId: SESSION_ID })).toBe(true);
+    expect(
+      protocol.isSubscribed({ type: "subscribed_design", sessionId: OTHER_SESSION_ID }),
+    ).toBe(false);
+  });
+
+  it("does not accept a feature's confirmation", () => {
+    // The cross-scope case, and the reason the two protocols are separate functions
+    // rather than one parameterised by a flag.
+    expect(protocol.isSubscribed({ type: "subscribed", featureId: SESSION_ID })).toBe(false);
+  });
+
+  it("treats only a design session event as a change", () => {
+    expect(protocol.isEventFrame(designFrame())).toBe(true);
+    expect(protocol.isEventFrame(featureFrame())).toBe(false);
+  });
+});
 
 function buildRelay() {
   const sockets: Array<ReturnType<typeof makeSocket>> = [];
@@ -147,7 +182,7 @@ function buildRelay() {
 
   const relay = createLiveRelay({
     url: "ws://api.test/api/ws",
-    ...designProtocol(),
+    protocol: designProtocol(),
     onEvent,
     onStatusChange: (status) => statuses.push(status),
     socketFactory: () => {

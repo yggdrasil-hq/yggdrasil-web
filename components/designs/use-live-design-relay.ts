@@ -5,7 +5,7 @@ import { apiBaseUrl } from "@/lib/config";
 import {
   createLiveRelay,
   createRefreshCoalescer,
-  designSessionEventFromFrame,
+  designSubscription,
   liveSocketUrl,
   type LiveRelayStatus,
 } from "@/lib/features/live-relay";
@@ -86,14 +86,12 @@ export function useLiveDesignRelay(input: {
     const relay = createLiveRelay({
       url,
       /*
-       * The design protocol, named here so the relay never has to know which scope
-       * it serves. The session id is echoed in `subscribed_design`, so it is
-       * checked: a confirmation for another session cannot mark this socket live.
+       * The design protocol, from its one home in `lib/` so a test exercises the real
+       * thing. Writing it inline here is what let an earlier version of this change's
+       * tests pass while verifying only a copy — a mutation to this file was
+       * invisible to them.
        */
-      subscribeFrame: { type: "subscribe_design", projectId, sessionId },
-      isSubscribed: (frame) =>
-        frame.type === "subscribed_design" && frame.sessionId === sessionId,
-      isEventFrame: (frame) => designSessionEventFromFrame(frame) !== null,
+      protocol: designSubscription({ projectId, sessionId }),
       onEvent: () => refresh.trigger(),
       onStatusChange: setStatus,
     });

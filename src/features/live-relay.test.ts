@@ -10,12 +10,12 @@ import {
   createLiveRelay,
   createRefreshCoalescer,
   deltaTextFromFrame,
+  featureSubscription,
   jobEventFromFrame,
   liveSocketUrl,
   parseLiveFrame,
   pollIntervalMsForRelay,
   reconnectDelayMs,
-  type LiveFrame,
   type LiveSocket,
 } from "@/lib/features/live-relay";
 
@@ -23,20 +23,13 @@ const PROJECT_ID = "22222222-2222-4222-8222-222222222222";
 const FEATURE_ID = "33333333-3333-4333-8333-333333333333";
 
 /**
- * The feature protocol, in one place.
- *
- * The relay no longer knows either scope (issue #25), so every caller supplies
- * its own frames. Spelling it once here keeps the three call sites about the
- * behaviour they actually test. `design-frames.test.ts` covers the design
- * counterpart and asserts the two readers do not accept each other's frames.
+ * The feature protocol, from its one home in `lib/` rather than restated here — so
+ * these three call sites exercise the implementation the hook actually uses. See the
+ * note in `live-relay-design.test.ts` for why that distinction turned out to matter:
+ * a restated protocol is a copy no mutation can falsify.
  */
 function featureProtocol() {
-  return {
-    subscribeFrame: { type: "subscribe", projectId: PROJECT_ID, featureId: FEATURE_ID },
-    isSubscribed: (frame: LiveFrame) =>
-      frame.type === "subscribed" && frame.featureId === FEATURE_ID,
-    isEventFrame: (frame: LiveFrame) => jobEventFromFrame(frame) !== null,
-  };
+  return featureSubscription({ projectId: PROJECT_ID, featureId: FEATURE_ID });
 }
 
 function makeSocket() {
@@ -91,7 +84,7 @@ function buildRelay(options: { maxAttempts?: number } = {}) {
 
   const relay = createLiveRelay({
     url: "ws://api.test/api/ws",
-    ...featureProtocol(),
+    protocol: featureProtocol(),
     onEvent,
     onDelta,
     onStatusChange: (status) => statuses.push(status),
@@ -349,7 +342,7 @@ describe("createLiveRelay: deltas", () => {
     const socket = makeSocket();
     const relay = createLiveRelay({
       url: "ws://api.test/api/ws",
-      ...featureProtocol(),
+      protocol: featureProtocol(),
       onEvent: vi.fn(),
       socketFactory: () => socket,
       schedule: () => 0,
@@ -509,7 +502,7 @@ describe("createLiveRelay", () => {
     const scheduler = makeScheduler();
     const relay = createLiveRelay({
       url: "ws://api.test/api/ws",
-      ...featureProtocol(),
+      protocol: featureProtocol(),
       onEvent: vi.fn(),
       socketFactory: () => {
         throw new Error("blocked");
