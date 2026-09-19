@@ -29,6 +29,20 @@ export interface Project {
   uploadedExtensionsEnabled: boolean;
   /** ADR 014: whether design sessions are enabled for this project. */
   hasDesignSurface: boolean;
+  /**
+   * Issue #31 part 1: the IANA zone this project's test schedules are read in,
+   * or `null` for the default (UTC). The scheduler resolves it per occurrence —
+   * a stored zone, not a fixed offset — so a schedule does not drift across a DST
+   * transition.
+   *
+   * **Returned as stored, so it is not guaranteed to be renderable.** The API
+   * validates on write and deliberately does not rewrite an unusable value to
+   * `null`, because that would hide the problem from the operator who has to fix
+   * it. Anything rendering this must go through `scheduleZoneName`, which falls
+   * back to UTC for a zone `Intl` cannot resolve — the same fallback the
+   * scheduler applies.
+   */
+  timeZone: string | null;
   repositories: ProjectRepository[];
   repositoryRemovalBlockedReason: string | null;
 }

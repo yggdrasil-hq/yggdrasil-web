@@ -119,6 +119,7 @@ export function CreateTestPageClient({ projectId }: CreateTestPageClientProps) {
       <main className="flex-1 px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
         <div className="mx-auto max-w-content">
           <TestForm
+            timeZone={project.timeZone}
             initialName=""
             initialSpecMarkdown={DEFAULT_TEST_SPEC}
             initialScheduleCron="0 9 * * *"

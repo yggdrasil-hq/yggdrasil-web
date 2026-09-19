@@ -16,7 +16,7 @@ import {
 import { fetchProject, fetchTest, triggerTestRun, updateTest } from "@/lib/api";
 import type { Project, Test } from "@/lib/features/types";
 import { appRoute } from "@/lib/config";
-import { cronToPresetId, describeCustomCronUtc, presetLabel } from "@/lib/tests/schedules";
+import { cronToPresetId, describeCustomCron, presetLabel } from "@/lib/tests/schedules";
 import { describeTriggerRunFailure } from "@/lib/features/test-runs";
 import { LoadFailure } from "@/components/ui/load-failure";
 
@@ -174,19 +174,18 @@ export function TestDetailClient({ projectId, testId }: TestDetailClientProps) {
                 <div>
                   <CardTitle className="text-base">Run status</CardTitle>
                   <CardDescription>
-                    Schedule: {presetLabel(test.scheduleCron)}
+                    Schedule: {presetLabel(test.scheduleCron, project.timeZone)}
                   </CardDescription>
                   {/*
                    * Issue #31: the custom-expression path had no zone shown at
-                   * all, so a user typing `0 2 * * *` could not tell that the
-                   * scheduler reads it as UTC. The presets already name their
-                   * zone; this makes the free-text path say the same thing in
-                   * words, which is the most that can be done before the
-                   * per-project timezone setting exists.
+                   * all, so a user typing `0 2 * * *` could not tell which clock
+                   * the scheduler reads it against. The presets name their zone;
+                   * this makes the free-text path say the same thing, in words,
+                   * against the project's own zone now that one can be set.
                    */}
                   {cronToPresetId(test.scheduleCron) === "custom" ? (
                     <CardDescription>
-                      {describeCustomCronUtc(test.scheduleCron)}
+                      {describeCustomCron(test.scheduleCron, project.timeZone)}
                     </CardDescription>
                   ) : null}
                   <CardDescription>
@@ -247,6 +246,7 @@ export function TestDetailClient({ projectId, testId }: TestDetailClientProps) {
 
           <TestForm
             key={test.updatedAt}
+            timeZone={project.timeZone}
             initialName={test.name}
             initialSpecMarkdown={test.specMarkdown}
             initialScheduleCron={test.scheduleCron}

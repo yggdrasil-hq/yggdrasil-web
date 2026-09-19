@@ -176,7 +176,7 @@ export function TestsPageClient({ projectId }: TestsPageClientProps) {
                             {test.enabled ? "Enabled" : "Paused"}
                           </span>
                         </div>
-                        <CardDescription>{presetLabel(test.scheduleCron)}</CardDescription>
+                        <CardDescription>{presetLabel(test.scheduleCron, project.timeZone)}</CardDescription>
                         {test.lastRunAt ? (
                           <CardDescription>
                             Last run{" "}

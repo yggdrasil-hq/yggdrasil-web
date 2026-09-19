@@ -14,10 +14,21 @@ import {
   TEST_SCHEDULE_PRESETS,
   type TestSchedulePresetId,
   cronToPresetId,
-  describeCustomCronUtc,
+  describeCustomCron,
+  presetLabel,
+  scheduleZoneName,
+  scheduleZoneWarning,
 } from "@/lib/tests/schedules";
 
 interface TestFormProps {
+  /**
+   * Issue #31 part 1: the project's schedule zone, so the labels describe the
+   * clock the scheduler will actually read. Required — not defaulted — because a
+   * missing value would silently render UTC for a project that is not on UTC,
+   * which is the false statement this parameter exists to remove. Pass
+   * `project.timeZone`, `null` and all.
+   */
+  timeZone: string | null;
   initialName: string;
   initialSpecMarkdown: string;
   initialScheduleCron: string;
@@ -35,6 +46,7 @@ interface TestFormProps {
 }
 
 export function TestForm({
+  timeZone,
   initialName,
   initialSpecMarkdown,
   initialScheduleCron,
@@ -110,13 +122,27 @@ export function TestForm({
         <CardHeader>
           <CardTitle className="text-base">Schedule</CardTitle>
           {/*
-           * Says the zone up front as well as under the field: the presets name
-           * UTC in their own labels, and a user reading only this card's
-           * description should still learn which clock applies.
+           * Issue #31 part 1: says which clock applies, now the project's rather
+           * than a hardcoded UTC. Kept here as well as in the option labels
+           * because a user reading only this line should learn it, and because it
+           * is the one place that covers the *interval* presets too — those carry
+           * no zone suffix of their own (their interval is zone-independent),
+           * yet their phase is not.
            */}
-          <CardDescription>Evaluated in UTC. Minimum interval is 1 hour.</CardDescription>
+          <CardDescription>Evaluated in {scheduleZoneName(timeZone)}. Minimum interval is 1 hour.</CardDescription>
         </CardHeader>
         <div className="space-y-4 px-4 pb-4">
+          {/*
+           * The one state the labels cannot explain: the project *has* a zone
+           * stored, the labels say UTC anyway, and nothing says why. Shown only
+           * when there is something wrong with the stored value — see
+           * `scheduleZoneWarning`.
+           */}
+          {scheduleZoneWarning(timeZone) ? (
+            <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-mist">
+              {scheduleZoneWarning(timeZone)}
+            </p>
+          ) : null}
           <select
             value={presetId}
             onChange={(event) => setPresetId(event.target.value as TestSchedulePresetId)}
@@ -127,7 +153,7 @@ export function TestForm({
           >
             {Object.entries(TEST_SCHEDULE_PRESETS).map(([id, preset]) => (
               <option key={id} value={id}>
-                {preset.label}
+                {presetLabel(preset.cron, timeZone)}
               </option>
             ))}
             <option value="custom">Custom cron expression</option>
@@ -143,20 +169,19 @@ export function TestForm({
                 required
               />
               {/*
-               * Issue #31: the presets name UTC (see `TEST_SCHEDULE_PRESETS`),
-               * but the free-text path did not — so this field was the one place
-               * a user configured a schedule with no statement of which clock it
-               * is read against. The per-project timezone setting that would let
-               * them choose a zone does not exist yet; saying plainly what the
-               * current behaviour is does not depend on it, and leaving it
-               * unsaid is what makes "every night at 2am" silently wrong.
+               * Issue #31: the presets name a zone, but the free-text path did
+               * not — so this field was the one place a user configured a
+               * schedule with no statement of which clock it is read against.
+               * Leaving it unsaid is what makes "every night at 2am" silently
+               * wrong by three or four hours for anyone not on the project's
+               * zone.
                *
                * `aria-live` is inherited by nothing here, so this is plain text
                * beside the field rather than a status region: it changes as the
                * user types, and announcing every keystroke's interpretation
                * would be noise. It is reachable as a description by proximity.
                */}
-              <p className="text-xs text-shadow">{describeCustomCronUtc(customCron)}</p>
+              <p className="text-xs text-shadow">{describeCustomCron(customCron, timeZone)}</p>
             </div>
           ) : null}
         </div>
