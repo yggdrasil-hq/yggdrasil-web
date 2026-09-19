@@ -168,10 +168,14 @@ describe("the repo's own mock coverage (#64)", () => {
    * of this disagreed with each other.
    */
   it("has the expected number of called and handled paths", () => {
+    // Both counters moved by one together when #35's readiness gate landed: the
+    // middleware calls `/organizations/readiness` on every navigation, and the
+    // handler was added with it rather than ledged as debt. Pinned deliberately
+    // so the next path has to be counted rather than absorbed.
     expect({
       called: coverage.called.length,
       handled: coverage.handled.length,
-    }).toEqual({ called: 86, handled: 50 });
+    }).toEqual({ called: 87, handled: 51 });
   });
 
   /**

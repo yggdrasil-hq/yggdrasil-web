@@ -34,6 +34,7 @@ import {
   getMockOrgMembers,
   getMockOrganization,
   getMockOrganizationCluster,
+  getMockReadiness,
   getMockOrganizationRoles,
   getMockOrganizationSecrets,
   getMockOrganizations,
@@ -847,6 +848,16 @@ export const handlers = [
 
   http.get(apiUrl("/organizations/roles"), () => {
     return HttpResponse.json(getMockOrganizationRoles());
+  }),
+
+  // Issue #35's onboarding gate. Registered and *derived from the org fixtures*
+  // rather than ledged as a known gap: the middleware calls it on every
+  // navigation, so without a handler a developer running against the mocks would
+  // have the gate silently disabled (the fetch fails, which the middleware reads
+  // as "do not gate") — the same quiet half-working surface the coverage test was
+  // written to prevent.
+  http.get(apiUrl("/organizations/readiness"), () => {
+    return HttpResponse.json(getMockReadiness());
   }),
 
   http.post(apiUrl("/organizations/invites/:token/accept"), ({ params }) => {

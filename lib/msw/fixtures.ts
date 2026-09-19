@@ -31,6 +31,9 @@ import type {
   RolesResponse,
   TestingResults,
   Test,
+  OrganizationReadiness,
+  ReadinessReport,
+  ReadinessStep,
 } from "@/lib/features/types";
 import type { ActionItem } from "@/lib/api";
 import type { AuthUser } from "@/lib/auth/types";
@@ -1463,6 +1466,81 @@ export const mockOrganizations: Organization[] = [
 
 export function getMockOrganizations(): Organization[] {
   return mockOrganizations;
+}
+
+/**
+ * Issue #35's readiness report, **derived** from `mockOrganizations` rather than
+ * written out again.
+ *
+ * Deriving is the point: readiness is a pure function of an org's status and role
+ * on the API side, and a second hand-maintained copy here is exactly the drift
+ * this codebase keeps finding — change a mock org's `status` to `ready` and the
+ * onboarding gate has to follow it, or a developer testing the gate sees a
+ * checklist that contradicts the org settings page next to it.
+ *
+ * With the orgs as they ship, `org_acme` and `org_personal_saratc` are ready, so
+ * `entryAllowed` is true and the gate lets a developer straight through — which is
+ * what someone running the app against the mocks wants by default.
+ *
+ * **To exercise the blocked path**, set every mock org's `status` to
+ * `"pending_cluster"` above: `entryAllowed` then becomes false and the onboarding
+ * checklist renders for each of them, `org_northwind` with the non-admin copy
+ * because its role is `developer`.
+ */
+export function getMockReadiness(): ReadinessReport {
+  const organizations: OrganizationReadiness[] = mockOrganizations.map((org) => {
+    const clusterSatisfied = org.status === "ready";
+    // The model dimension follows the cluster here rather than modelling its own
+    // state. A mock is not the place to invent a half-configured catalog, and
+    // conflating the two would make the checklist show a step that org settings
+    // cannot account for — see the unit tests for the split
+    // `kindsWithoutDefault` / `kindsThatDoNotResolve` behaviour instead.
+    const steps: ReadinessStep[] = [
+      {
+        id: "cluster",
+        label: "Kubernetes cluster",
+        satisfied: clusterSatisfied,
+        detail: clusterSatisfied
+          ? null
+          : "No Kubernetes cluster is configured for this organization.",
+        requiresAdmin: true,
+        fixPath: "/settings/organization/cluster",
+      },
+      {
+        id: "model_defaults",
+        label: "Default models",
+        satisfied: clusterSatisfied,
+        detail: clusterSatisfied
+          ? null
+          : "No default model is assigned for every agent job kind.",
+        requiresAdmin: true,
+        fixPath: "/settings/organization/providers",
+        missingModelKinds: clusterSatisfied ? [] : ["design_grill"],
+        kindsWithoutDefault: clusterSatisfied ? [] : ["design_grill"],
+        kindsThatDoNotResolve: [],
+      },
+    ];
+
+    return {
+      id: org.id,
+      name: org.name,
+      isPersonal: org.isPersonal,
+      role: org.role,
+      ready: steps.every((step) => step.satisfied),
+      steps,
+    };
+  });
+
+  // The entry rule itself, derived the same way the API derives it: any org ready
+  // permits entry. Spelling it out here would let the fixture disagree with the
+  // rule the middleware applies to it.
+  const ready = organizations.find((org) => org.ready) ?? null;
+
+  return {
+    entryAllowed: ready !== null,
+    readyOrganizationId: ready?.id ?? null,
+    organizations,
+  };
 }
 
 export function getMockOrganization(orgId: string): Organization | undefined {
