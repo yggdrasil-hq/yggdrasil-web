@@ -201,6 +201,25 @@ export function TestDetailClient({ projectId, testId }: TestDetailClientProps) {
                       ? `Schedule last fired ${formatDistanceToNow(new Date(test.lastRunAt), { addSuffix: true })}`
                       : "No scheduled run yet — the next scheduled window will dispatch one."}
                   </CardDescription>
+                  {/*
+                   * Issue #31: the zone is a **project** setting, so this page can
+                   * only report it — and a setting nobody can find from where it
+                   * matters is only half-built. The label above answers "which
+                   * clock?", which is the question that sends a user looking for a
+                   * control; this is where that search lands.
+                   *
+                   * A link rather than a picker here on purpose: the zone applies
+                   * to every schedule in the project, and a control beside one test
+                   * would read as affecting only that test.
+                   */}
+                  <CardDescription>
+                    <Link
+                      href={appRoute(`/projects/${projectId}/settings`)}
+                      className="text-mist underline hover:text-frost"
+                    >
+                      Change timezone
+                    </Link>
+                  </CardDescription>
                 </div>
                 {/*
                  * Offered even while the test is paused: `enabled` governs the
