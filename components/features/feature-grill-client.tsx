@@ -38,14 +38,9 @@ import {
   countAgentTextEvents,
   shouldDropStreamBuffer,
 } from "@/lib/features/grill-stream";
-import { apiBaseUrl, appRoute } from "@/lib/config";
-import {
-  createLiveRelay,
-  createRefreshCoalescer,
-  LIVE_SAFETY_POLL_INTERVAL_MS,
-  liveSocketUrl,
-  type LiveRelayStatus,
-} from "@/lib/features/live-relay";
+import { appRoute } from "@/lib/config";
+import { pollIntervalMsForRelay } from "@/lib/features/live-relay";
+import { useLiveFeatureRelay } from "@/components/features/use-live-feature-relay";
 import type { FeatureEvent, JobStatus } from "@/lib/features/types";
 import type { FeatureStatus } from "@/lib/features/statuses";
 import { GrillQuestionCard } from "@/components/features/grill-question-card";
@@ -112,7 +107,6 @@ export function FeatureGrillClient() {
   const [restartingAt, setRestartingAt] = useState<string | null>(null);
   const [polled, setPolled] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [liveStatus, setLiveStatus] = useState<LiveRelayStatus>("off");
   /**
    * Streaming assistant text that has arrived over the relay but is not yet in
    * the transcript (ADR 019 item 13).
@@ -169,44 +163,35 @@ export function FeatureGrillClient() {
     }
   }, [projectId, featureId, setFeature]);
 
-  const relayLive = liveStatus === "live";
+  /*
+   * Issue #25: this page was the first relay-driven surface, and it now shares
+   * `useLiveFeatureRelay` with the build-progress panel and the Testing tab —
+   * three copies of this wiring would have drifted, and the wiring is subtle
+   * enough (the callback ref, the coalescer, "live" only on a confirmed
+   * subscription) that drift would have been silent.
+   */
+  const { isLive } = useLiveFeatureRelay({
+    projectId,
+    featureId,
+    onEvent: () => void poll(),
+    // Deltas append directly rather than triggering a re-read: a delta is text,
+    // not a state change, and the authoritative `agent_text` still arrives over
+    // the REST path and supersedes the buffer.
+    onDelta: (text) => setStreamingText((previous) => previous + text),
+  });
 
   useEffect(() => {
     void poll();
-    // Depends on `relayLive`, not on the status itself: connecting → live is the
-    // only transition that changes the interval, and keying on the boolean means
-    // the initial off → connecting transition does not trigger a second
+    // Keyed on the boolean rather than on a status string: connecting → live is
+    // the only transition that changes the interval, and keying on the boolean
+    // means the initial off → connecting transition does not trigger a second
     // immediate read on mount.
     const interval = setInterval(
       () => void poll(),
-      relayLive ? LIVE_SAFETY_POLL_INTERVAL_MS : GRILL_POLL_INTERVAL_MS,
+      pollIntervalMsForRelay({ isLive, fallbackMs: GRILL_POLL_INTERVAL_MS }),
     );
     return () => clearInterval(interval);
-  }, [poll, relayLive]);
-
-  useEffect(() => {
-    const url = liveSocketUrl(apiBaseUrl(), window.location.origin);
-    // Unparsable API base: no socket, and the poll effect above is already the
-    // fallback rather than an error path.
-    if (!url) return;
-
-    // Coalesced because one agent turn can append several events at once, and a
-    // re-read per frame would be as many requests as polling, just burstier.
-    const refresh = createRefreshCoalescer({ run: () => void poll() });
-    const relay = createLiveRelay({
-      url,
-      projectId,
-      featureId,
-      onEvent: () => refresh.trigger(),
-      onDelta: (text) => setStreamingText((previous) => previous + text),
-      onStatusChange: setLiveStatus,
-    });
-
-    return () => {
-      refresh.cancel();
-      relay.stop();
-    };
-  }, [projectId, featureId, poll]);
+  }, [poll, isLive]);
 
   async function handleSendReply() {
     const content = replyDraft.trim();

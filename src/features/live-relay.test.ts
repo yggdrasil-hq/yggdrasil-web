@@ -7,12 +7,13 @@ import {
   LIVE_RECONNECT_BASE_MS,
   LIVE_RECONNECT_MAX_MS,
   LIVE_SAFETY_POLL_INTERVAL_MS,
-  liveSocketUrl,
   createLiveRelay,
   createRefreshCoalescer,
   deltaTextFromFrame,
   jobEventFromFrame,
+  liveSocketUrl,
   parseLiveFrame,
+  pollIntervalMsForRelay,
   reconnectDelayMs,
   type LiveSocket,
 } from "@/lib/features/live-relay";
@@ -566,5 +567,42 @@ describe("live poll intervals", () => {
     expect(LIVE_SAFETY_POLL_INTERVAL_MS).toBeGreaterThanOrEqual(10_000);
     expect(LIVE_RECONNECT_BASE_MS).toBeGreaterThanOrEqual(1_000);
     expect(LIVE_MAX_RECONNECT_ATTEMPTS).toBeGreaterThan(1);
+  });
+});
+
+describe("pollIntervalMsForRelay (issue #25)", () => {
+  /*
+   * The direction is the assertion. `isLive` must select the *slower* interval:
+   * the socket removes the latency and the poll is only the safety net, so
+   * getting this backwards leaves a connected surface polling at the fast rate
+   * *on top of* the socket — strictly worse than before the relay existed, and
+   * invisible to any test that only checks the page renders.
+   */
+  it("polls more slowly while the relay is live", () => {
+    const fallbackMs = 2000;
+
+    const live = pollIntervalMsForRelay({ isLive: true, fallbackMs });
+    const offline = pollIntervalMsForRelay({ isLive: false, fallbackMs });
+
+    expect(live).toBe(LIVE_SAFETY_POLL_INTERVAL_MS);
+    expect(offline).toBe(fallbackMs);
+    // Stated as an ordering as well, so the test still means something if either
+    // constant is retuned: live must never be the faster of the two.
+    expect(live).toBeGreaterThan(offline);
+  });
+
+  it("uses the caller's fallback when the relay is not live", () => {
+    // The three converted surfaces have genuinely different fallbacks (2s for a
+    // build, 5s for a testing tab), so the fallback is the caller's to choose
+    // and must not be replaced by a shared default.
+    expect(pollIntervalMsForRelay({ isLive: false, fallbackMs: 5000 })).toBe(5000);
+    expect(pollIntervalMsForRelay({ isLive: false, fallbackMs: 2000 })).toBe(2000);
+  });
+
+  it("accepts an explicit safety interval, defaulting to the shared one", () => {
+    expect(pollIntervalMsForRelay({ isLive: true, fallbackMs: 2000, safetyMs: 9000 })).toBe(9000);
+    expect(pollIntervalMsForRelay({ isLive: true, fallbackMs: 2000 })).toBe(
+      LIVE_SAFETY_POLL_INTERVAL_MS,
+    );
   });
 });

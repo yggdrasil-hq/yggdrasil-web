@@ -46,6 +46,30 @@ export const LIVE_MAX_RECONNECT_ATTEMPTS = 10;
 export const LIVE_REFRESH_COALESCE_MS = 150;
 
 /**
+ * How often a relay-driven surface re-reads, given whether the relay is live.
+ *
+ * Issue #25 converted three surfaces (the grill transcript, the build-progress
+ * panel, the feature Testing tab) and each one needs the same decision, so it
+ * lives here rather than as an inline ternary repeated per component.
+ *
+ * **The direction is the whole point, and it is worth a test.** `isLive` must
+ * select the *slower* interval: the socket is what removes the latency, and the
+ * poll is only the safety net that keeps a silently-dead relay at "a bit stale"
+ * instead of "wrong forever". Getting this backwards would leave a connected
+ * surface polling every two seconds *on top of* the socket — strictly worse than
+ * before the relay existed, and invisible in any test that only checked that the
+ * page renders. `pollIntervalMsForRelay` asserts the ordering rather than
+ * restating it.
+ */
+export function pollIntervalMsForRelay(input: {
+  isLive: boolean;
+  fallbackMs: number;
+  safetyMs?: number;
+}): number {
+  return input.isLive ? (input.safetyMs ?? LIVE_SAFETY_POLL_INTERVAL_MS) : input.fallbackMs;
+}
+
+/**
  * Application close codes the API sends. Both mean "do not retry": a rejected
  * credential or a protocol mismatch will not fix itself by reconnecting, and
  * retrying would turn a single failure into a permanent loop.

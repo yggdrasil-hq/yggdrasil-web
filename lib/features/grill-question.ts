@@ -43,25 +43,36 @@ export interface GrillQuestionView {
  *    says so: *"Null on the containing event means the question is prose — which
  *    is both the pre-#38 state of every row and the current state of an open-ended
  *    question."* An older transcript must keep rendering as text.
- * 3. **A form with no options** → null, and this one is subtle enough to be worth
- *    the paragraph below.
+ * 3. **A form with no options** → null, and this one is defensive rather than
+ *    compensating for a gap — see below.
  * 4. **A form with no question text and no header** → null. A control with nothing
  *    above it is unanswerable: the options would be a picker for an unstated
  *    question.
  *
- * **Why (3) is a real case and not defensive padding.** The API builds
- * `questionForm` from `parsed.data.options ? … : null`, and an empty array is
- * *truthy* in JavaScript — so `options: []` reaches the client as a
- * `questionForm` with an empty list. Its zod schema constrains options with
- * `.max(20)` and no `.min(1)`, so nothing rejects it upstream either. Rendering a
- * control there would give the user a picker with no choices and a Submit button
- * that cannot be enabled: a dead end that looks like a loaded state. Falling back
- * to prose keeps the question readable, which is the honest degradation — the
- * alternative is showing a control that cannot be satisfied.
+ * **Why (3) is handled even though the API already prevents it.** The API
+ * rejects an empty `options` array outright — `superRefine` in
+ * `jobs/internal-routes.ts`: *"A question with options must offer at least one"* —
+ * so nothing it accepts can carry one, and nothing it writes can contain one.
  *
- * The distinction is therefore *load-bearing* and is asserted in the tests: "no
- * structured question" and "a structured question with nothing to pick" are
- * different states, and only one of them renders as prose.
+ * The branch stays anyway, for two reasons that have nothing to do with the API:
+ * it is one line, and the failure it prevents is a bad one — a picker with no
+ * choices and a Submit that can never enable is a dead end that *looks* like a
+ * loaded state, which is worse than prose. It also means a row from any other
+ * producer (an older install, a hand-written fixture) degrades to a readable
+ * question rather than an unsatisfiable control.
+ *
+ * **Correction, because the previous note here was wrong.** It claimed the API's
+ * schema had `.max(20)` and no `.min(1)`, "so nothing rejects it upstream either",
+ * and called this case reachable rather than defensive. That is false: the guard
+ * is a `superRefine` rather than an array modifier, and reading the field
+ * definition instead of the whole schema is exactly what hid it. It is corrected
+ * rather than deleted because a confident wrong claim *about another repo* is
+ * worse than no claim — it invites someone to "fix" an API that is already
+ * correct, or to treat the client as the validation boundary.
+ *
+ * The distinction is still asserted in the tests: "no structured question" and "a
+ * structured question with nothing to pick" are different states that reach the
+ * same decision, and the assertion is that neither throws nor half-builds a view.
  */
 export function askUserQuestionFor(event: FeatureEvent): GrillQuestionView | null {
   if (event.type !== "ask_user") return null;
