@@ -165,6 +165,30 @@ export interface FeatureEvent {
   status: string | null;
   prUrl: string | null;
   summary: string | null;
+  /**
+   * Issue #38: how an `ask_user` question should be *rendered*, when the agent
+   * knew the answer was a choice rather than free prose.
+   *
+   * **Null means the question is prose** — which is both the pre-#38 state of
+   * every stored event and the current state of an open-ended question. The
+   * question *text* stays in `question` above (it always has); this carries only
+   * the structured choice data, so a card reads `question` for its heading and
+   * this for what to offer.
+   *
+   * Optional as well as nullable because the field is being threaded through the
+   * Orchestrator and the API now: a response from a component that does not send
+   * it yet omits the key entirely, and that has to render as prose rather than as
+   * a crash. Both spellings of "absent" reach `askUserQuestionFor`.
+   *
+   * The option shape matches the API's `JobEventQuestionOption` exactly. An empty
+   * `options` array is reachable — see `askUserQuestionFor` for why it must not
+   * render a control.
+   */
+  questionForm?: {
+    header: string | null;
+    multiSelect: boolean;
+    options: Array<{ label: string; description: string | null }>;
+  } | null;
   actionItems?: Array<{
     type: string;
     description: string;
