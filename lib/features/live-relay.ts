@@ -258,7 +258,7 @@ export function featureSubscription(input: {
  *
  * Note there is **no delta** path: streaming deltas are feature-scoped end to end
  * (`publishDelta` refuses a job with no `feature_id`), so a design session's prose
- * arrives as stored `agent_text` events — per message, not per token. Issue #93.
+ * arrives as stored `agent_text` events — per message, not per token. Issue #95.
  */
 export function designSubscription(input: {
   projectId: string;

@@ -37,7 +37,7 @@ import {
  * (`api/src/jobs/internal-routes.ts`, `publishDelta`), and the payload's topic is
  * derived from `featureId`. A `design_grill` job has no feature, so its prose
  * arrives as stored `agent_text` events — one per message, not one per token. The
- * page therefore updates per message rather than per token; see issue #93 for
+ * page therefore updates per message rather than per token; see issue #95 for
  * whether that should change, since it is an API-side decision.
  *
  * **What this deliberately does not do: hold state.** ADR 019 item 7 — the socket
