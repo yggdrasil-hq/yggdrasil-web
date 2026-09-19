@@ -46,7 +46,16 @@ import {
   liveSocketUrl,
   type LiveRelayStatus,
 } from "@/lib/features/live-relay";
-import type { FeatureEvent, JobStatus } from "@/lib/features/types";import type { FeatureStatus } from "@/lib/features/statuses";
+import type { FeatureEvent, JobStatus } from "@/lib/features/types";
+import type { FeatureStatus } from "@/lib/features/statuses";
+import { GrillQuestionCard } from "@/components/features/grill-question-card";
+import {
+  askUserQuestionFor,
+  formatQuestionAnswer,
+  isQuestionAnswered,
+  isQuestionInteractive,
+  recordedAnswerFor,
+} from "@/lib/features/grill-question";
 
 /**
  * Full-page `spec_grill` chat (yggdrasil-web#1), reached from the Spec stage
@@ -90,6 +99,13 @@ export function FeatureGrillClient() {
   const [restartedFrom, setRestartedFrom] = useState<string | null>(null);
   const [replyDraft, setReplyDraft] = useState("");
   const [sendingReply, setSendingReply] = useState(false);
+  /**
+   * Issue #38: the id of the question whose answer is being sent, so only that
+   * card shows a busy state. A boolean would put "Sending…" on every question in
+   * the transcript, which is the visual equivalent of claiming they are all being
+   * answered.
+   */
+  const [answeringEventId, setAnsweringEventId] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [confirmingRestartAt, setConfirmingRestartAt] = useState<string | null>(null);
@@ -204,6 +220,34 @@ export function FeatureGrillClient() {
       setActionError(error instanceof Error ? error.message : "Failed to send reply");
     } finally {
       setSendingReply(false);
+    }
+  }
+
+  /**
+   * Issue #38: submit a structured answer.
+   *
+   * **Through the same path as a typed reply** (ADR 006's mid-run reply), because
+   * that is the only channel that reaches a running agent, and the answer is
+   * prose on the wire — `formatQuestionAnswer` owns how a list becomes prose, and
+   * its comment explains the newline separator.
+   *
+   * A failure leaves the selection in place (the card's own state is untouched)
+   * and surfaces the API's message on the card, so the user can retry without
+   * re-picking. That is why this does not clear anything on the error path.
+   */
+  async function handleAnswerQuestion(eventId: string, labels: string[]) {
+    const content = formatQuestionAnswer(labels);
+    if (!content) return;
+    setAnsweringEventId(eventId);
+    setActionError(null);
+    try {
+      await sendFeatureMessage(projectId, featureId, content);
+    } catch (error) {
+      setActionError(
+        error instanceof Error ? error.message : "Failed to send your answer",
+      );
+    } finally {
+      setAnsweringEventId(null);
     }
   }
 
@@ -340,21 +384,53 @@ export function FeatureGrillClient() {
               {rewoundNotice}
             </p>
           ) : null}
-          {events.map((event) => (
-            <div key={event.id} className="space-y-1">
-              <GrillEvent event={event} />
-              {restartable && isRestartableTurn(event) ? (
-                <TurnRestartControl
-                  confirming={confirmingRestartAt === event.id}
-                  busy={restartingAt === event.id}
-                  isAdrApproved={feature.adrApproved}
-                  onAsk={() => setConfirmingRestartAt(event.id)}
-                  onCancel={() => setConfirmingRestartAt(null)}
-                  onConfirm={() => void handleRestartFrom(event.id)}
-                />
-              ) : null}
-            </div>
-          ))}
+          {events.map((event, index) => {
+            /*
+             * Issue #38: a structured question renders as a card instead of
+             * `GrillEvent`'s bubble. `askUserQuestionFor` decides whether the
+             * event *is* one — null covers both "prose question" (every pre-#38
+             * row) and "structured but with nothing to pick", and the module's
+             * comment explains why those must both fall back to text.
+             *
+             * Computed once into a local, rather than called in the condition and
+             * again in the branch: a second call would be a second parse of the
+             * same event, and the non-null assertion needed to satisfy the type
+             * checker would be asserting something this code just proved.
+             */
+            const question = askUserQuestionFor(event);
+            return (
+              <div key={event.id} className="space-y-1">
+                {question ? (
+                  <GrillQuestionCard
+                    question={question}
+                    answer={
+                      isQuestionAnswered(events, index)
+                        ? recordedAnswerFor(events, index)
+                        : null
+                    }
+                    interactive={isQuestionInteractive({
+                      awaitingUserInput: feature.awaitingUserInput,
+                      jobStatus,
+                    })}
+                    submitting={answeringEventId === event.id}
+                    onAnswer={(labels) => handleAnswerQuestion(event.id, labels)}
+                  />
+                ) : (
+                  <GrillEvent event={event} />
+                )}
+                {restartable && isRestartableTurn(event) ? (
+                  <TurnRestartControl
+                    confirming={confirmingRestartAt === event.id}
+                    busy={restartingAt === event.id}
+                    isAdrApproved={feature.adrApproved}
+                    onAsk={() => setConfirmingRestartAt(event.id)}
+                    onCancel={() => setConfirmingRestartAt(null)}
+                    onConfirm={() => void handleRestartFrom(event.id)}
+                  />
+                ) : null}
+              </div>
+            );
+          })}
           {processing && streamingText ? (
             // The growing bubble: the model's own words as they arrive. It is
             // replaced, not appended to, the moment the finished message is
