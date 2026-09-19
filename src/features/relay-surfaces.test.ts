@@ -33,12 +33,37 @@ import {
  * second half runs it over the real components.
  */
 
+/**
+ * Each surface and the scope **kind** it subscribes to (issue #100).
+ *
+ * A map rather than a list, because the kind is the half of "this surface is live"
+ * the poll rule cannot see: a surface can re-read on connect and still receive
+ * nothing, if it subscribed to a scope the server routes something else to. That
+ * failure is quiet — the authoriser refuses an id it cannot resolve, the client falls
+ * back to its poll, and the page works while never being live. Which is the state
+ * issue #100 was filed about.
+ */
+const EXPECTED_SCOPES: Record<string, string> = {
+  "components/features/feature-grill-client.tsx": "feature",
+  "components/features/build-progress-panel.tsx": "feature",
+  "components/features/testing-panel.tsx": "feature",
+  "components/designs/design-session-client.tsx": "design_session",
+  // Issue #100: the Test entity's run history, and the first `test`-scoped surface.
+  // A feature-driven `test_run` reaches both the feature topic and the test topic, so
+  // this page needs a socket of its own to consume the second.
+  "components/tests/test-run-history.tsx": "test",
+};
+
 /** The four surfaces #98 is about, so a rename or removal is noticed. */
 const KNOWN_SURFACES = [
   "components/features/feature-grill-client.tsx",
   "components/features/build-progress-panel.tsx",
   "components/features/testing-panel.tsx",
   "components/designs/design-session-client.tsx",
+  // Issue #100: the fifth surface, and the first *test*-scoped one — a feature-driven
+  // `test_run` reaches both the feature topic and the test topic, so the Test entity's
+  // run history needed a socket of its own to consume the second.
+  "components/tests/test-run-history.tsx",
 ];
 
 describe("findRelayPollEffects", () => {
@@ -215,8 +240,11 @@ describe("findRelaySurfaces", () => {
       }
     `;
 
+    // `scopes` is the hook's own scope kind, read from the same call (issue #100) —
+    // `"feature"` here because that is what this source subscribes to, and asserting
+    // the whole object is what keeps the field from being silently dropped.
     expect(findRelaySurfaces([{ path: "components/x.tsx", source }])).toEqual([
-      { path: "components/x.tsx", hooks: ["useLiveRelay"] },
+      { path: "components/x.tsx", hooks: ["useLiveRelay"], scopes: ["feature"] },
     ]);
   });
 
@@ -278,6 +306,57 @@ function componentSources(): RelaySurfaceFile[] {
   return files;
 }
 
+describe("findRelaySurfaces: the scope kind (#100)", () => {
+  const scan = (source: string) =>
+    findRelaySurfaces([{ path: "components/x.tsx", source }]);
+
+  it("reads the literal kind each surface subscribes to", () => {
+    // The other half of "this surface is live": the poll rule cannot see which topic a
+    // socket was pointed at, and a surface can satisfy every dependency rule while
+    // receiving nothing.
+    const source = `
+      import { useLiveRelay } from "@/components/features/use-live-relay";
+      export function Surface({ projectId, testId }) {
+        const { isLive } = useLiveRelay({
+          projectId,
+          scope: { kind: "test", id: testId },
+          onEvent: () => void poll(),
+        });
+        return null;
+      }
+    `;
+
+    expect(scan(source)[0].scopes).toEqual(["test"]);
+  });
+
+  it("reports no kind when the scope is not a literal, rather than guessing", () => {
+    // A computed kind is not something this can reason about, and inventing one would
+    // be the scanner claiming to know more than it read. Empty is the honest answer,
+    // and the repo-wide assertion below treats empty as a failure.
+    const source = `
+      import { useLiveRelay } from "@/components/features/use-live-relay";
+      export function Surface({ projectId, scope }) {
+        const { isLive } = useLiveRelay({ projectId, scope, onEvent: () => void poll() });
+        return null;
+      }
+    `;
+
+    expect(scan(source)[0].scopes).toEqual([]);
+  });
+
+  it("does not read a scope out of some other call", () => {
+    // Discovery is the hook by name, so a component that merely *contains* a
+    // scope-shaped object must not be credited with a subscription.
+    const source = `
+      function helper() {
+        return { projectId: "p", scope: { kind: "test", id: "t" } };
+      }
+    `;
+
+    expect(scan(source)).toEqual([]);
+  });
+});
+
 describe("the repo's own relay surfaces (#98)", () => {
   const files = componentSources();
   const surfaces = findRelaySurfaces(files);
@@ -306,6 +385,35 @@ describe("the repo's own relay surfaces (#98)", () => {
           `the fallback for a relay that never connects is gone`,
       ).toContain(surface.path);
     }
+  });
+
+  it("subscribes each surface to the scope kind it reads (#100)", () => {
+    const kinds = new Map(surfaces.map((surface) => [surface.path, surface.scopes]));
+    const mismatched = Object.entries(EXPECTED_SCOPES).flatMap(([path, expected]) => {
+      const found = kinds.get(path);
+      if (found === undefined) return [`  ${path}: not discovered as a relay surface`];
+      if (found.length !== 1) {
+        return [
+          `  ${path}: subscribes to ${JSON.stringify(found)} — expected exactly one ` +
+            `literal scope kind (${expected})`,
+        ];
+      }
+      if (found[0] !== expected) {
+        return [`  ${path}: subscribes to "${found[0]}", reads the "${expected}" scope`];
+      }
+      return [];
+    });
+
+    expect(
+      mismatched,
+      mismatched.length === 0
+        ? ""
+        : "A relay surface must subscribe to the scope its own REST read mirrors " +
+          "(ADR 019 item 7). A wrong kind is quiet: the authoriser refuses an id it " +
+          "cannot resolve, the client falls back to polling, and the page works while " +
+          "never being live — the state issue #100 was filed about.\n" +
+          mismatched.join("\n"),
+    ).toEqual([]);
   });
 
   it("makes every relay poll effect re-read when the relay becomes live", () => {

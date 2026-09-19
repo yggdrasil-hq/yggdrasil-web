@@ -32,10 +32,11 @@ import ts from "typescript";
  *
  * **What it proves, and what it does not.** It proves that the effect which
  * schedules the relay's interval also performs the read immediately on (re)start
- * and is keyed on the live status. It does not prove the poll *happens* at
- * runtime, and it cannot see a surface that refreshes by some other mechanism
- * entirely. Both limits are stated here rather than papered over: a check whose
- * name implies more than it does is the failure mode this burn-down keeps
+ * and is keyed on the live status, and it proves that each surface names the scope
+ * kind it subscribes to as a literal (issue #100). It does not prove the poll
+ * *happens* at runtime, and it cannot see a surface that refreshes by some other
+ * mechanism entirely. Both limits are stated here rather than papered over: a check
+ * whose name implies more than it does is the failure mode this burn-down keeps
  * finding.
  *
  * Reached only from tests — nothing in `components/` or `app/` imports it, so
@@ -80,6 +81,16 @@ export interface RelaySurface {
   path: string;
   /** The relay hooks the file imports, e.g. `["useLiveRelay"]`. */
   hooks: string[];
+  /**
+   * The scope **kinds** the file subscribes to, e.g. `["test"]` (issue #100).
+   *
+   * Empty when the hook is called with a scope this cannot read — a computed kind, a
+   * variable, a spread — which is deliberately reported as *no kinds found* rather
+   * than as a guess. The assertion over the repo's own surfaces treats an empty list
+   * as a failure, so a surface that stopped naming its scope literally has to be
+   * looked at rather than silently dropped out of the check.
+   */
+  scopes: string[];
 }
 
 export interface RelayPollEffect {
@@ -242,6 +253,52 @@ export function findRelayPollEffects(files: RelaySurfaceFile[]): RelayPollEffect
 }
 
 /** The files that subscribe a surface to the relay, found by the hook they import. */
+/**
+ * The literal `kind` of each `scope: { kind: … }` passed to a relay hook call (issue
+ * #100).
+ *
+ * **Why this exists.** The rule above is about the *poll*, and it leaves the other half
+ * of "this surface is live" unchecked: a surface can subscribe with the wrong scope and
+ * satisfy every dependency rule while receiving nothing. The failure is quiet by
+ * construction — the socket is refused by an authoriser that cannot resolve the id, the
+ * client falls back to its poll, and the page keeps working while never being live.
+ * That is exactly the state issue #100 was filed about, so the check that a surface
+ * re-reads on connect is only half a guard without it.
+ *
+ * Reads the **string literal** and nothing else: a kind behind a variable or a spread is
+ * not a constant this can reason about, and inventing one would be the scanner claiming
+ * to know more than it read. The caller treats "found none" as a failure rather than
+ * ignoring it, which is what keeps a computed kind visible.
+ */
+function scopeKindsIn(sourceFile: ts.SourceFile, hooks: string[]): string[] {
+  const kinds: string[] = [];
+
+  const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
+      if (hooks.includes(node.expression.text)) {
+        const props = node.arguments[0];
+        if (props !== undefined && ts.isObjectLiteralExpression(props)) {
+          for (const prop of props.properties) {
+            if (!ts.isPropertyAssignment(prop)) continue;
+            if (prop.name.getText(sourceFile) !== "scope") continue;
+            const scope = prop.initializer;
+            if (!ts.isObjectLiteralExpression(scope)) continue;
+            for (const entry of scope.properties) {
+              if (!ts.isPropertyAssignment(entry)) continue;
+              if (entry.name.getText(sourceFile) !== "kind") continue;
+              if (ts.isStringLiteral(entry.initializer)) kinds.push(entry.initializer.text);
+            }
+          }
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+
+  visit(sourceFile);
+  return kinds;
+}
+
 export function findRelaySurfaces(files: RelaySurfaceFile[]): RelaySurface[] {
   const surfaces: RelaySurface[] = [];
 
@@ -267,7 +324,9 @@ export function findRelaySurfaces(files: RelaySurfaceFile[]): RelaySurface[] {
     };
 
     visit(sourceFile);
-    if (hooks.length > 0) surfaces.push({ path: file.path, hooks });
+    if (hooks.length > 0) {
+      surfaces.push({ path: file.path, hooks, scopes: scopeKindsIn(sourceFile, hooks) });
+    }
   }
 
   return surfaces.sort((a, b) => a.path.localeCompare(b.path));
