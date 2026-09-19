@@ -16,6 +16,8 @@ import type {
   Feature,
   FeatureEvent,
   FeatureEventsResponse,
+  JobSession,
+  JobSessionResponse,
   JobStatus,
   Notification,
   OrgClusterMetadata,
@@ -323,6 +325,29 @@ export const mockJobEvents: Record<string, FeatureEvent[]> = {
 export const mockJobStatuses: Record<string, JobStatus> = {
   feat_001: "running",
 };
+
+/**
+ * ADR 032: the job each mock feature's events belong to.
+ *
+ * A real id per feature rather than one shared constant, because the session read is
+ * job-scoped and two features sharing an id would let a mock pass while the real
+ * client addressed the wrong run.
+ */
+export const mockJobIds: Record<string, string> = {
+  feat_001: "job_mock_grill_001",
+  feat_002: "job_mock_grill_002",
+};
+
+/**
+ * ADR 032 item 5: what the mock says became of a job's session.
+ *
+ * Keyed by job id and seeded **absent**, which means the default answer is
+ * `unknown` — the state the API reports when it has no row. Absent is the honest
+ * default rather than "available": a fabricated saved session would advertise a
+ * resume that no mock run ever performed, and the notice's whole job is to tell the
+ * truth about what exists. A test that wants a stored session sets one.
+ */
+export const mockJobSessions: Record<string, JobSession> = {};
 
 export const mockLastErrors: Record<string, string> = {};
 
@@ -1179,6 +1204,10 @@ export function getMockFeatureEvents(featureId: string): FeatureEventsResponse {
     // and no mock path restarts one from a message (ADR 024) — so these two
     // mirror an ordinary first-attempt grill run.
     jobKind: "spec_grill",
+    // ADR 032: every artifact route is job-scoped, so the events read carries the
+    // run's id. Null for a feature the mock has no job for, mirroring the API's own
+    // nullable pair.
+    jobId: mockJobIds[featureId] ?? null,
     restartedFromEventId: null,
     // Issue #92: present exactly when a test seeds a wait, mirroring the API's
     // own collapse of "not waiting" and "waiting with unknown fields".
@@ -1186,6 +1215,52 @@ export function getMockFeatureEvents(featureId: string): FeatureEventsResponse {
     events: mockJobEvents[featureId] ?? [],
   };
 }
+
+/**
+ * ADR 032 item 5: what became of one job's Pi session, for the mock layer.
+ *
+ * A seeded session is returned as stored, and an unseeded one as `unknown` with no
+ * outcome — the same answer the API gives when it holds no row, and deliberately
+ * **not** `not_collected`. The distinction is the point of the whole item: a mock
+ * that answered `not_collected` for every job would make the UI's two cases
+ * indistinguishable in exactly the way the API refuses to.
+ *
+ * `canFork` is derived from the state rather than stored, so a seeded session cannot
+ * claim to be forkable while its state says otherwise — the API makes the same
+ * derivation, and a fixture that could disagree with it would let a UI bug pass.
+ */
+export function getMockJobSession(jobId: string): JobSessionResponse {
+  const session = mockJobSessions[jobId];
+  if (!session) {
+    return {
+      session: {
+        jobId,
+        state: "unknown",
+        outcome: null,
+        sessionId: null,
+        byteSize: null,
+        expiresAt: null,
+        purgedAt: null,
+        createdAt: null,
+        canFork: false,
+      },
+      explanation: "No session was reported for this run.",
+    };
+  }
+  return {
+    session: { ...session, canFork: session.state === "available" },
+    explanation: MOCK_SESSION_EXPLANATIONS[session.state],
+  };
+}
+
+const MOCK_SESSION_EXPLANATIONS: Record<JobSession["state"], string> = {
+  available: "This run's session was saved.",
+  expired:
+    "This run's session was saved but has since been removed after its retention window.",
+  not_collected: "This run did not save a session.",
+  unavailable: "This run's session could not be retrieved.",
+  unknown: "No session was reported for this run.",
+};
 
 /** Simulates a grill session completing right after a reply — good enough for exercising the UI end-to-end without a real Orchestrator. */
 export function addMockFeatureReply(projectId: string, featureId: string, content: string): void {

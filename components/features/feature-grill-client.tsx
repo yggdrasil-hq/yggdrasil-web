@@ -13,6 +13,7 @@ import {
   cancelFeature,
   fetchFeature,
   fetchFeatureEvents,
+  fetchJobSession,
   restartFeatureFromMessage,
   retryFeatureGrill,
   sendFeatureMessage,
@@ -48,7 +49,12 @@ import {
 import { appRoute } from "@/lib/config";
 import { pollIntervalMsForRelay } from "@/lib/features/live-relay";
 import { useLiveRelay } from "@/components/features/use-live-relay";
-import type { FeatureEvent, JobStatus } from "@/lib/features/types";
+import {
+  canResumeFromSession,
+  sessionNotice,
+  sessionViewState,
+} from "@/lib/features/session";
+import type { FeatureEvent, JobSession, JobStatus } from "@/lib/features/types";
 import type { FeatureStatus } from "@/lib/features/statuses";
 import { GrillQuestionCard } from "@/components/features/grill-question-card";
 import {
@@ -98,6 +104,22 @@ export function FeatureGrillClient() {
   const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
   const [lastError, setLastError] = useState<string | null>(null);
   const [jobKind, setJobKind] = useState<string | null>(null);
+  /**
+   * ADR 032 item 1: the run whose artifacts this page can address. The events read
+   * carries it because every artifact route is job-scoped and a page holding only a
+   * feature id cannot build one.
+   */
+  const [jobId, setJobId] = useState<string | null>(null);
+  /**
+   * What became of this run's saved session, and whether asking about it failed.
+   *
+   * Three pieces of state rather than one nullable object, because "we could not
+   * find out" must not render as "there is no session" — the same distinction the
+   * API keeps between `unavailable` and `not_collected`, held one layer up.
+   */
+  const [session, setSession] = useState<JobSession | null>(null);
+  const [sessionFailed, setSessionFailed] = useState(false);
+  const [sessionLoading, setSessionLoading] = useState(false);
   const [restartedFrom, setRestartedFrom] = useState<string | null>(null);
   /**
    * Issue #92: how long this grill has been waiting on an unanswered question.
@@ -181,6 +203,7 @@ export function FeatureGrillClient() {
       setJobStatus(eventsData.jobStatus);
       setLastError(eventsData.lastError);
       setJobKind(eventsData.jobKind);
+      setJobId(eventsData.jobId);
       setRestartedFrom(eventsData.restartedFromEventId);
       /*
        * Issue #92. The functional updater is load-bearing rather than stylistic:
@@ -228,6 +251,53 @@ export function FeatureGrillClient() {
     // the REST path and supersedes the buffer.
     onDelta: (text) => setStreamingText((previous) => previous + text),
   });
+
+  /*
+   * ADR 032: whether this run's Pi session was saved, so the user knows what a
+   * restart would do before they choose one.
+   *
+   * **Asked only about a finished grill run**, and that narrowing is the honest
+   * choice rather than an optimisation. A session is collected when the run ends
+   * (`internal/worker/specgrill.go`), so during a live run there is no row yet and
+   * asking would produce `unknown` — which reads as "no session was reported" about a
+   * run that is still writing one. A build's transcript is excluded for the same
+   * reason a build never collects a session at all, and asking would report the
+   * absence as though it were a fault.
+   */
+  const sessionApplies =
+    jobId !== null &&
+    jobKind === "spec_grill" &&
+    jobStatus !== null &&
+    jobStatus !== "pending" &&
+    jobStatus !== "running";
+
+  useEffect(() => {
+    if (!sessionApplies || jobId === null) {
+      setSession(null);
+      setSessionFailed(false);
+      setSessionLoading(false);
+      return;
+    }
+    let active = true;
+    setSessionLoading(true);
+    setSessionFailed(false);
+    fetchJobSession(projectId, jobId)
+      .then((data) => {
+        if (active) setSession(data.session);
+      })
+      .catch(() => {
+        // A failure here is reported as not knowing rather than as "no session":
+        // the two are different claims, and the same distinction the API keeps
+        // between `unavailable` and `not_collected`.
+        if (active) setSessionFailed(true);
+      })
+      .finally(() => {
+        if (active) setSessionLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [projectId, jobId, sessionApplies]);
 
   useEffect(() => {
     void poll();
@@ -374,6 +444,29 @@ export function FeatureGrillClient() {
   });
   const rewoundNotice = restartedNotice(restartedFrom);
 
+  /*
+   * ADR 032 item 5: the sentence explaining what became of this run's session, or
+   * null when there is nothing to say. Silent for an available session — that is the
+   * ordinary outcome, and this surface exists for the cases a user would otherwise
+   * have no account of.
+   */
+  const sessionView = sessionViewState({
+    loading: sessionLoading,
+    requestFailed: sessionFailed,
+    session,
+  });
+  const sessionMessage = sessionApplies ? sessionNotice(sessionView) : null;
+  /*
+   * ADR 032 item 3's non-destructive resume is not offered yet, and the reason is
+   * worth keeping where the control would be: a true fork needs a **Pi entry id** from
+   * `get_fork_messages`, which is an RPC to a live process and is not captured
+   * anywhere (issue #28 tracks the capture). Every branch below therefore reports
+   * whether a fork would be *possible* and never offers one it cannot finish — an
+   * optimistic control that then fails is worse than an absent one. ADR 024's
+   * destructive rewind remains the control, exactly as item 5 intends.
+   */
+  const resumable = sessionApplies && canResumeFromSession({ state: sessionView, session });
+
   const processing = isGrillProcessing({
     awaitingUserInput: feature.awaitingUserInput,
     jobStatus,
@@ -439,6 +532,20 @@ export function FeatureGrillClient() {
           {rewoundNotice ? (
             <p className="rounded-md border border-rime-soft bg-surface-02 p-2 text-xs text-mist">
               {rewoundNotice}
+            </p>
+          ) : null}
+          {sessionMessage ? (
+            <p
+              className="rounded-md border border-rime-soft bg-surface-02 p-2 text-xs text-mist"
+              /*
+               * `data-session-state` so the state is assertable without matching on
+               * prose: the sentence is copy and may be reworded, while the state it
+               * describes is behaviour.
+               */
+              data-session-state={sessionView}
+              data-session-resumable={resumable ? "true" : "false"}
+            >
+              {sessionMessage}
             </p>
           ) : null}
           {events.map((event, index) => {
