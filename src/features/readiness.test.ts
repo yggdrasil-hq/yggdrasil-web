@@ -13,6 +13,7 @@ import {
   onboardingHeadline,
   primaryBlockingOrganization,
   reachableFixPaths,
+  resolveProjectTarget,
   roleLabel,
   unmetSteps,
 } from "@/lib/features/readiness";
@@ -408,5 +409,157 @@ describe("roleLabel", () => {
     expect(roleLabel("admin")).toBe("administrator");
     expect(roleLabel("product_manager")).toBe("product manager");
     expect(roleLabel("developer")).toBe("developer");
+  });
+});
+
+/*
+ * Issue #89: the create wizard can target an org the gate did not admit the user
+ * for.
+ *
+ * The gate and the wizard are two expressions of one question and had drifted.
+ * The wizard picked a target from `?org=` → personal → first with no reference to
+ * readiness, so a user admitted via a *joined* ready org whose *personal* org was
+ * unconfigured was let in, pressed Create project, silently targeted the unready
+ * org, and got a `400`. Same dead end #35 removes, by the one route the "any org
+ * ready" entry rule creates.
+ *
+ * These cases are what make the resolution rule checkable. The case that matters
+ * most is the third: it is the issue's exact scenario, and the assertion is that
+ * the outcome is both *usable* and *explained* — not merely that it does not 400.
+ */
+describe("resolveProjectTarget (#89)", () => {
+  const PERSONAL_READY = org({
+    id: "org_personal",
+    name: "Sarat's workspace",
+    isPersonal: true,
+    steps: [CLUSTER_OK],
+  });
+  const JOINED_READY = org({
+    id: "org_acme",
+    name: "Acme Retail",
+    isPersonal: false,
+    steps: [CLUSTER_OK],
+  });
+  const JOINED_UNREADY = org({
+    id: "org_northwind",
+    name: "Northwind Labs",
+    isPersonal: false,
+    role: "developer",
+    steps: [step(), MODELS_MISSING],
+  });
+
+  it("keeps the personal org when it is ready — nothing changes for a working user", () => {
+    const target = resolveProjectTarget(report([PERSONAL_READY, JOINED_READY]), null);
+
+    expect(target.org?.id).toBe("org_personal");
+    expect(target.usable).toBe(true);
+    // No substitution happened, so there is nothing to explain.
+    expect(target.note).toBeNull();
+  });
+
+  it("falls back to the personal org when it is ready and listed after another", () => {
+    const target = resolveProjectTarget(report([JOINED_READY, PERSONAL_READY]), null);
+    expect(target.org?.id).toBe("org_personal");
+  });
+
+  it("uses a ready joined org when the personal org is not ready, and says so", () => {
+    // The issue's exact scenario: admitted via a joined ready org, own org unset.
+    const target = resolveProjectTarget(
+      report([org({ id: "org_personal", name: "Sarat's workspace", isPersonal: true, steps: [step()] }), JOINED_READY]),
+      null,
+    );
+
+    expect(target.org?.id).toBe("org_acme");
+    expect(target.usable).toBe(true);
+    // Usable alone would still be a silent substitution. The note is the fix for
+    // "silently targets": the user expected their own org and is told why not.
+    expect(target.note).toContain("Sarat's workspace");
+    expect(target.note).toContain("Acme Retail");
+  });
+
+  it("honours ?org= over a ready personal org", () => {
+    const target = resolveProjectTarget(report([PERSONAL_READY, JOINED_READY]), "org_acme");
+    expect(target.org?.id).toBe("org_acme");
+    expect(target.usable).toBe(true);
+    // Nothing was chosen on the user's behalf, so there is nothing to explain.
+    expect(target.note).toBeNull();
+  });
+
+  it("blocks — rather than substitutes — when ?org= names an org that is not ready", () => {
+    // Substituting would land the project in an org the user did not ask for.
+    const target = resolveProjectTarget(report([PERSONAL_READY, JOINED_UNREADY]), "org_northwind");
+
+    expect(target.org?.id).toBe("org_northwind");
+    expect(target.usable).toBe(false);
+    expect(target.blockedReason).toContain("Northwind Labs");
+    // It names what is missing, not just "go to settings and look".
+    expect(target.blockedReason).toContain("kubernetes cluster");
+    expect(target.blockedReason).toContain("default models");
+    // And the recovery set is offered, so this is a block and not a dead end.
+    expect(target.hostable.map((o) => o.id)).toEqual(["org_personal"]);
+  });
+
+  it("ignores ?org= naming an org the user does not belong to", () => {
+    // The API would reject the create, so the wizard must not adopt it as a target.
+    const target = resolveProjectTarget(report([PERSONAL_READY, JOINED_READY]), "org_someone_else");
+
+    expect(target.org?.id).toBe("org_personal");
+    expect(target.usable).toBe(true);
+  });
+
+  it("names the personal org when no org is ready at all", () => {
+    // Reached only off the gated path, but the messaging must still be about the
+    // org the user thinks of as theirs rather than an arbitrary one.
+    const target = resolveProjectTarget(
+      report([org({ id: "org_personal", name: "Sarat's workspace", isPersonal: true, steps: [step()] }), JOINED_UNREADY]),
+      null,
+    );
+
+    expect(target.org?.id).toBe("org_personal");
+    expect(target.usable).toBe(false);
+    expect(target.blockedReason).toContain("Sarat's workspace");
+  });
+
+  it("handles a user with no organization at all", () => {
+    const target = resolveProjectTarget(report([]), null);
+
+    expect(target.org).toBeNull();
+    expect(target.usable).toBe(false);
+    expect(target.blockedReason).toContain("do not belong to an organization");
+  });
+
+  it("prefers the API's readyOrganizationId over list position", () => {
+    // `readyOrganizationId` and `hostable[0]` are the same value only because
+    // `listForUser` orders personal-first. Where a project lands must not depend on
+    // a query's ORDER BY, so the named field is what the rule reads.
+    const first = org({ id: "org_a", name: "A Corp", isPersonal: false, steps: [CLUSTER_OK] });
+    const named = org({ id: "org_b", name: "B Corp", isPersonal: false, steps: [CLUSTER_OK] });
+    const custom: ReadinessReport = {
+      entryAllowed: true,
+      readyOrganizationId: "org_b",
+      // Deliberately out of order relative to the named field.
+      organizations: [org({ id: "org_personal", isPersonal: true, steps: [step()] }), first, named],
+    };
+
+    expect(resolveProjectTarget(custom, null).org?.id).toBe("org_b");
+  });
+
+  it("offers every ready org as a choice, and only ready ones", () => {
+    const target = resolveProjectTarget(
+      report([PERSONAL_READY, JOINED_READY, JOINED_UNREADY]),
+      null,
+    );
+
+    // More than one entry is what makes the picker worth showing.
+    expect(target.hostable.map((o) => o.id)).toEqual(["org_personal", "org_acme"]);
+  });
+
+  it("always leaves a way forward when the target cannot be used", () => {
+    // The non-negotiable: no submit that cannot succeed, and no dead end either.
+    // One ready org means a target is reachable — assert that rather than trust it.
+    const target = resolveProjectTarget(report([JOINED_UNREADY, JOINED_READY]), "org_northwind");
+
+    expect(target.usable).toBe(false);
+    expect(target.hostable.length).toBeGreaterThan(0);
   });
 });

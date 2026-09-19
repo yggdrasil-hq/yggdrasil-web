@@ -270,3 +270,158 @@ export function roleLabel(role: OrganizationReadiness["role"]): string {
       return role.replace(/_/g, " ");
   }
 }
+
+/*
+ * ---------------------------------------------------------------------------
+ * Which organization a new project lands in (issue #89)
+ * ---------------------------------------------------------------------------
+ *
+ * The entry gate and the create wizard are two expressions of one question —
+ * "can this user act?" — and they had drifted: the gate admits a user when **any**
+ * org is ready, while the wizard picked a target from `?org=` → personal → first,
+ * consulting readiness for neither. So a user admitted via a *joined* ready org,
+ * whose *personal* org was not configured, was let in, pressed Create project,
+ * silently targeted their unready personal org, and got a `400` telling them to
+ * configure a cluster — the same dead end #35 exists to remove, reached by the one
+ * route the "any org ready" entry rule creates.
+ *
+ * Everything below therefore reads `ready`, which the API computed. It does not
+ * derive readiness from the steps, and it must not: a second definition of "ready"
+ * in the browser is the exact defect this shares a root with (#35, and the note at
+ * the top of this module).
+ */
+
+/** The orgs that could host a new project — already-ready, in the API's order. */
+export function hostableOrganizations(report: ReadinessReport): OrganizationReadiness[] {
+  return report.organizations.filter((org) => org.ready);
+}
+
+export interface ProjectTarget {
+  /** The org a new project would be created in, or null when the user has none. */
+  org: OrganizationReadiness | null;
+  /** Whether that org can actually host a project right now. */
+  usable: boolean;
+  /**
+   * Every org that could host one. The picker's choices, and the recovery set when
+   * the resolved target cannot be used.
+   */
+  hostable: OrganizationReadiness[];
+  /** Why the resolved org cannot be used, phrased for the person reading it. */
+  blockedReason: string | null;
+  /**
+   * A sentence explaining an implicit choice that might not be what the user
+   * expected, or null when there is nothing surprising to say.
+   */
+  note: string | null;
+}
+
+/**
+ * The org a new project should default to, and whether that default can work.
+ *
+ * **The order, and why it preserves the status quo for working users:**
+ *
+ * 1. **`?org=`**, when it names an org the user belongs to. Stated intent wins —
+ *    a user with several orgs says which one they mean this way, and ignoring it
+ *    to substitute a "better" org would land the project somewhere they did not
+ *    ask for.
+ * 2. **The personal org, when it is ready.** This is the common case and it is
+ *    deliberately *first* so nothing changes for anyone whose own org works. That
+ *    is the specific objection the issue raises against preferring
+ *    `readyOrganizationId` outright: it would move projects to an org the user did
+ *    not choose.
+ * 3. **`readyOrganizationId`** — the org that permits entry, so it can always
+ *    host. Preferring the named field rather than `hostable[0]` is deliberate:
+ *    they are the same value only because `listForUser` happens to order personal
+ *    first, and *where a project lands* should not depend on a query's `ORDER BY`.
+ * 4. **The personal org even when it is not ready.** Chosen only for the
+ *    *messaging*: the blocked explanation should name the org the user thinks of
+ *    as theirs, not an arbitrary one. Reached when no org is ready at all.
+ * 5. **Any org**, so a user with no personal org still gets a target to name.
+ *
+ * The net effect on existing users: a personal org that is ready is still the
+ * target, unchanged. The only targets that *move* belong to users whose personal
+ * org could not have hosted a project anyway — so no working default is taken away
+ * from anyone.
+ */
+export function resolveProjectTarget(
+  report: ReadinessReport,
+  requestedOrgId: string | null,
+): ProjectTarget {
+  const hostable = hostableOrganizations(report);
+
+  const requested = requestedOrgId
+    ? report.organizations.find((org) => org.id === requestedOrgId) ?? null
+    : null;
+  const personal = report.organizations.find((org) => org.isPersonal) ?? null;
+
+  const org =
+    requested ??
+    (personal?.ready ? personal : null) ??
+    hostable.find((candidate) => candidate.id === report.readyOrganizationId) ??
+    hostable[0] ??
+    personal ??
+    report.organizations[0] ??
+    null;
+
+  const usable = org !== null && org.ready;
+
+  /*
+   * The note exists for the case that motivated the issue: the user's own org is
+   * not set up, so a *different* one was chosen for them. That is a real
+   * improvement over a silent `400`, but it is still a silent substitution unless
+   * it is said out loud — and a user who expected their personal org deserves to
+   * know both why it was not used and that it is theirs to fix.
+   *
+   * Suppressed when the target was explicitly requested, because then nothing is
+   * being chosen on the user's behalf.
+   */
+  const note =
+    requested === null && personal !== null && !personal.ready && org !== null && org.id !== personal.id
+      ? `Your personal organization ${personal.name} is not set up yet, so this project will be created in ${org.name} instead.`
+      : null;
+
+  return {
+    org,
+    usable,
+    hostable,
+    blockedReason: usable ? null : blockedTargetReason(org),
+    note,
+  };
+}
+
+/**
+ * Why a target cannot host a project, in one sentence.
+ *
+ * Names what is missing rather than repeating the API's `400` ("Configure a
+ * Kubernetes cluster in your organization settings…"), because the wizard can see
+ * *which* steps are unmet and a bare instruction to go and look is what the dead
+ * end consisted of. The reader is also told they have an alternative, when they do
+ * — that is the difference between a block and a dead end.
+ */
+function blockedTargetReason(org: OrganizationReadiness | null): string {
+  if (!org) {
+    return (
+      "You do not belong to an organization yet, and a project has to belong to one. " +
+      "Create one from Organization settings first."
+    );
+  }
+
+  const unmet = unmetSteps(org);
+  if (unmet.length === 0) {
+    // Ready but reported unusable cannot happen through `usable` above; kept so the
+    // function is total rather than returning null and rendering an empty warning.
+    return `${org.name} cannot host a project yet.`;
+  }
+
+  const labels = unmet.map((step) => step.label.toLowerCase());
+  return (
+    `${org.name} cannot host a project yet — ${joinWithAnd(labels)} ` +
+    `${labels.length === 1 ? "is" : "are"} not configured. ` +
+    "An organization administrator can finish that in Organization settings."
+  );
+}
+
+function joinWithAnd(parts: string[]): string {
+  if (parts.length <= 1) return parts[0] ?? "";
+  return `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+}

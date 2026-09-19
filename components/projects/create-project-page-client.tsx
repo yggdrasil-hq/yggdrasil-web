@@ -14,6 +14,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,11 +26,12 @@ import {
   fetchFeatures,
   fetchGithubAccess,
   fetchInstallationConfigureUrl,
-  fetchOrganizations,
+  fetchOrganizationReadiness,
 } from "@/lib/api";
-import type { GithubAccessResponse } from "@/lib/features/types";
+import type { GithubAccessResponse, ReadinessReport } from "@/lib/features/types";
 import { appRoute, githubInstallStartUrl, oauthStartUrl } from "@/lib/config";
 import { filterRepos } from "@/lib/projects/filter-repos";
+import { resolveProjectTarget } from "@/lib/features/readiness";
 import { useOrgParam } from "@/components/settings/organization/use-org-param";
 
 type WizardStep = "details" | "repos";
@@ -51,7 +53,23 @@ export function CreateProjectPageClient() {
   const [submitting, setSubmitting] = useState(false);
 
   const orgParam = useOrgParam();
-  const [resolvedOrgId, setResolvedOrgId] = useState<string | null>(null);
+  /*
+   * The target organization (issue #89).
+   *
+   * This used to be resolved from `fetchOrganizations()` by `?org=` → personal →
+   * first, with readiness consulted nowhere — while the entry gate admits a user
+   * when *any* org is ready. The two rules could therefore disagree, and the
+   * disagreement was a dead end: a user let in via a joined ready org whose own org
+   * was unconfigured pressed Create project, silently targeted the unready org, and
+   * got a 400. So the wizard now reads `GET /organizations/readiness` — the *same*
+   * payload the gate is built from — and cannot see an org without its readiness.
+   * That is the structural half of the fix; the rule itself lives in
+   * `lib/features/readiness.ts`, which never re-derives `ready`.
+   */
+  const [readiness, setReadiness] = useState<ReadinessReport | null>(null);
+  const [readinessError, setReadinessError] = useState<string | null>(null);
+  /** The user's own pick from the picker, which outranks the default resolution. */
+  const [pickedOrgId, setPickedOrgId] = useState<string | null>(null);
 
   const loadAccess = useCallback((force = false) => {
     setLoading(true);
@@ -88,26 +106,40 @@ export function CreateProjectPageClient() {
     void loadAccess();
   }, [step, hasAttemptedLoad, loadAccess]);
 
-  // Resolved once, on the repos step — this wizard has no org picker of its
-  // own, so we resolve the target org the same way the API does when
-  // `organizationId` is omitted from POST /projects (routes.ts's
-  // resolveOrgForProject): an explicit `?org=` override if present, else the
-  // user's personal org, else their first org. Passed explicitly on create
-  // so the project lands in the org the user actually expects (every
-  // project inherits that org's per-job-kind model defaults per ADR 018;
-  // project-specific overrides happen afterward in Project settings).
+  // Resolved once, on the repos step. The rule lives in
+  // `lib/features/readiness.ts` so it is unit-testable and so it cannot drift from
+  // the gate's own — see the note where the state is declared.
   useEffect(() => {
-    if (step !== "repos" || resolvedOrgId) return;
-    fetchOrganizations()
-      .then((orgs) => {
-        const org =
-          (orgParam && orgs.find((o) => o.id === orgParam)) ||
-          orgs.find((o) => o.isPersonal) ||
-          orgs[0];
-        if (org) setResolvedOrgId(org.id);
-      })
-      .catch(() => undefined);
-  }, [step, resolvedOrgId, orgParam]);
+    if (step !== "repos" || readiness || readinessError) return;
+    fetchOrganizationReadiness()
+      .then(setReadiness)
+      .catch((loadError) =>
+        setReadinessError(
+          loadError instanceof Error ? loadError.message : "Failed to check organization readiness",
+        ),
+      );
+  }, [step, readiness, readinessError]);
+
+  const target = readiness ? resolveProjectTarget(readiness, pickedOrgId ?? orgParam) : null;
+  const resolvedOrgId = target?.org?.id ?? null;
+
+  /*
+   * Whether the submit must be held.
+   *
+   * **This is the non-negotiable of issue #89**: a user must not be able to reach a
+   * submit that cannot succeed. `target.usable` is the API's own `ready`, so the
+   * client is not deciding anything the server would disagree with — it is applying
+   * the server's answer before the round trip instead of after it.
+   *
+   * While readiness is still loading the submit is held too, because the rule has
+   * not been applied yet. If the fetch *failed*, it is not held: an unreachable
+   * readiness read must not be a new dead end, so the API stays the authority and
+   * the failure is surfaced rather than swallowed — the same posture the entry gate
+   * takes with a null report, for the same reason.
+   */
+  const resolvingTarget = step === "repos" && readiness === null && readinessError === null;
+  const orgBlocksSubmit = target !== null && !target.usable;
+  const canSubmit = Boolean(primaryRepo) && !submitting && !resolvingTarget && !orgBlocksSubmit;
 
   // After a fresh install, pre-select a repo from the installation we just landed from.
   useEffect(() => {
@@ -429,10 +461,105 @@ export function CreateProjectPageClient() {
             </div>
           </Card>
 
+          {/*
+           * Which organization this lands in (issue #89).
+           *
+           * Always shown, even when there is no choice to make. The defect this
+           * fixes was partly that the choice was *invisible*: a project silently
+           * landed in an org the user had not thought about, and the readiness
+           * mismatch was only its most visible symptom. Naming the org costs one
+           * line and removes the surprise.
+           */}
+          {readinessError ? (
+            <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-200">
+              <p>
+                Couldn&apos;t check which organizations can host a project just now ({readinessError}). You
+                can still create one — if the organization is not set up yet, the error will say what
+                is missing.
+              </p>
+            </div>
+          ) : null}
+
+          {step === "repos" && !readinessError ? (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Organization</CardTitle>
+              </CardHeader>
+              <div className="space-y-3 px-4 pb-4">
+                {resolvingTarget ? (
+                  <p className="text-sm text-mist">Checking which organization can host a project…</p>
+                ) : null}
+
+                {target?.org ? (
+                  <p className="text-sm text-mist">
+                    This project will be created in{" "}
+                    <span className="font-medium text-frost">{target.org.name}</span>.
+                  </p>
+                ) : null}
+
+                {target?.note ? (
+                  <p className="text-xs text-shadow">{target.note}</p>
+                ) : null}
+
+                {/*
+                 * The picker appears only when there is a real choice (>1 org that
+                 * can host) **and** the current target is one of them. Only *ready*
+                 * orgs are offered, because offering one that cannot host would
+                 * rebuild the dead end inside the wizard.
+                 *
+                 * The `usable` half of that condition is not decoration. Found by
+                 * rendering the blocked case: with `?org=` naming an org that is not
+                 * ready, a picker listing only the ready orgs renders its value as
+                 * the *first* option — so the control said "Sarat's workspace" while
+                 * the sentence beside it said the project would go to "Northwind
+                 * Labs". Two contradictory statements on one screen, which is the
+                 * very defect this issue is about. When the target is usable it is by
+                 * definition in `hostable`, so the value always matches an option and
+                 * the control cannot misrepresent the target; when it is blocked, the
+                 * recovery buttons below are the action instead.
+                 */}
+                {target?.usable && target.hostable.length > 1 ? (
+                  <Select
+                    value={resolvedOrgId ?? ""}
+                    aria-label="Organization"
+                    onChange={(event) => setPickedOrgId(event.target.value)}
+                  >
+                    {target.hostable.map((candidate) => (
+                      <option key={candidate.id} value={candidate.id}>
+                        {candidate.name}
+                      </option>
+                    ))}
+                  </Select>
+                ) : null}
+
+                {target && !target.usable && target.blockedReason ? (
+                  <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-200">
+                    <p>{target.blockedReason}</p>
+                    {target.hostable.length > 0 ? (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {target.hostable.map((candidate) => (
+                          <Button
+                            key={candidate.id}
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setPickedOrgId(candidate.id)}
+                          >
+                            Create it in {candidate.name}
+                          </Button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            </Card>
+          ) : null}
+
           {error ? <ErrorMessage className="text-sm text-red-400">{error}</ErrorMessage> : null}
 
           <div className="flex flex-wrap gap-3">
-            <Button type="submit" disabled={!primaryRepo || submitting}>
+            <Button type="submit" disabled={!canSubmit}>
               {submitting ? "Creating…" : "Create project"}
             </Button>
             <Button type="button" variant="ghost" onClick={() => setStep("details")}>
