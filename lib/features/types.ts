@@ -154,7 +154,13 @@ export type FeatureEventType =
   | "update_design_preview"
   | "submit_design"
   /** Issue #27: this build's entrypoint resolved conflicts with its base. */
-  | "merge_conflicts";
+  | "merge_conflicts"
+  /**
+   * ADR 032 item 3: a fork job stopped before its first turn. The *stage* it stopped
+   * at is on `forkStage` — three different diagnoses, which is why they are not one
+   * "fork failed" sentence.
+   */
+  | "fork_failed";
 
 export interface FeatureEvent {
   id: string;
@@ -195,6 +201,24 @@ export interface FeatureEvent {
     secretKey?: string;
     draftTestMarkdown?: string;
   }> | null;
+  /**
+   * ADR 032 item 3: which step a `fork_failed` event stopped at, and null on every
+   * other event type (the database's CHECK scopes it to that type).
+   *
+   *  - `write`  — the stored session never reached the pod
+   *  - `switch` — it arrived, and Pi loaded nothing from it
+   *  - `fork`   — the session loaded and the chosen resume point was rejected
+   *
+   * Three diagnoses with three different follow-ups (a delivery fault, an unusable
+   * artifact, a stale resume point that a later compaction or supersession invalidated),
+   * which is the whole reason the API stores a stage rather than one sentence. Rendering
+   * a single "fork failed" would throw that away at the last hop.
+   *
+   * Optional as well as nullable for the same reason `questionForm` is: a response from
+   * a component that does not send it yet omits the key, and that must read as "no
+   * stage recorded" rather than crash.
+   */
+  forkStage?: "write" | "switch" | "fork" | null;
   snapshot: Record<string, string> | null;
   createdAt: string;
 }
@@ -284,6 +308,16 @@ export interface FeatureEventsResponse {
    */
   restartedFromEventId: string | null;
   /**
+   * ADR 032 item 3: the earlier run this one forked from, when its Spec interview was
+   * *resumed* rather than restarted. Null for an ordinary run.
+   *
+   * The sibling of `restartedFromEventId` and not interchangeable with it — that one
+   * names a transcript turn (a rewind), this one names a run (a fork). A page needs
+   * both to explain why its transcript starts mid-conversation, and a resumed run
+   * rendered without this looks exactly like a retried one.
+   */
+  forkFromJobId: string | null;
+  /**
    * Issue #92: how long this grill has been waiting on an unanswered question, or
    * null when nobody is being waited on.
    *
@@ -301,7 +335,6 @@ export interface FeatureEventsResponse {
   awaitingReply: AwaitingReply | null;
   events: FeatureEvent[];
 }
-
 /**
  * Issue #28 part 2: one of a feature's **earlier** `spec_grill` runs.
  *
@@ -1285,18 +1318,67 @@ export interface JobSession {
    *
    * False does **not** mean no restart is offered: ADR 024's destructive rewind
    * remains available as the fallback and needs nothing but the transcript.
+   *
+   * Note this is about the *bytes* — `forkPoints` beside it is a separate question,
+   * and a session can be forkable while nobody knows which points it holds.
    */
   canFork: boolean;
+  /**
+   * ADR 032 item 2: the earlier user messages this session can be branched at.
+   *
+   * **`state` is what says whether `points` is an answer at all**, and the three cases
+   * must not render the same:
+   *
+   *  - `captured`   — Pi answered. `points` is a list, possibly **empty**, and an
+   *                   empty list is a real answer (there are no resumable points);
+   *  - `unavailable`— the capture was attempted and failed;
+   *  - `unknown`    — this API was never told anything.
+   *
+   * Only `captured` may present a choice. `points` is null for the other two, which is
+   * the type-level half of the same rule — a reader cannot treat "we could not find
+   * out" as "there are none" without first ignoring `state`.
+   */
+  forkPoints: {
+    state: ForkPointState;
+    points: ForkPoint[] | null;
+  };
 }
 
 /**
- * `session` is never null but its `state` may be `unknown`, and there is a second
- * field saying so in words — the API composes the sentence, so the UI cannot drift
- * from the service about what a state means.
+ * ADR 032 item 2: one previous user message a stored session can be forked from.
+ *
+ * `entryId` is Pi's own entry id — a durable cursor into the session tree, and a
+ * **different id space** from a grill event id. The two both exist in this suite and
+ * mean different things, which is why the resume request sends an entry id where the
+ * rewind sends an event id. `text` is the user message itself: what the user picks
+ * from, and what the fork re-answers.
+ */
+export interface ForkPoint {
+  entryId: string;
+  text: string;
+}
+
+/**
+ * The three states a fork-point capture can be read in.
+ *
+ * `unknown` is not stored by the API — it is what *no row* means — and it is separate
+ * from `unavailable` for the same reason `JobSessionState` separates its own pair: "we
+ * were never told" and "the attempt failed" are different claims about different
+ * actors.
+ */
+export type ForkPointState = "captured" | "unavailable" | "unknown";
+
+/**
+ * `session` is never null but its `state` may be `unknown`, and there are two fields
+ * saying so in words — the API composes the sentences, so the UI cannot drift from the
+ * service about what a state means. That applies to the fork points as much as to the
+ * session: `forkPointsExplanation` is why a page can say "we could not find out which
+ * points you can resume from" instead of presenting an empty picker.
  */
 export interface JobSessionResponse {
   session: JobSession;
   explanation: string;
+  forkPointsExplanation: string;
 }
 
 // --- Resource allocation caps (ADR 030) ---

@@ -915,6 +915,37 @@ export async function restartFeatureFromMessage(
   return parseJson<Feature>(response);
 }
 
+/**
+ * ADR 032 item 3: resumes a feature's Spec interview from a stored session — a true
+ * fork, and the non-destructive counterpart to `restartFeatureFromMessage` above.
+ *
+ * **An entry id, not an event id.** The two id spaces are different and the API is
+ * explicit about it: a rewind names a transcript turn (`eventId`, a uuid), a fork names
+ * a point inside Pi's own session tree (`entryId`, an opaque token). Sending the wrong
+ * one would be refused rather than misinterpreted — the API validates the entry id
+ * against the run's captured points.
+ *
+ * The run is *not* named here. The API resolves it as the feature's latest job, which is
+ * the run whose points the page offered from — a client cannot branch a conversation
+ * that is not on screen, because it has no way to ask for one.
+ */
+export async function resumeFeatureFromMessage(
+  projectId: string,
+  featureId: string,
+  entryId: string,
+): Promise<Feature> {
+  const response = await fetch(
+    apiUrl(`/projects/${projectId}/features/${featureId}/resume-from-message`),
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ entryId }),
+    },
+  );
+  return parseJson<Feature>(response);
+}
+
 /** Re-dispatches feature_build for a feature whose build failed, keeping the already-approved ADR. */
 export async function retryFeatureBuild(projectId: string, featureId: string): Promise<void> {
   const response = await fetch(
