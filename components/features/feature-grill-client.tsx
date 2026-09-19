@@ -47,7 +47,7 @@ import {
 } from "@/lib/features/grill-wait";
 import { appRoute } from "@/lib/config";
 import { pollIntervalMsForRelay } from "@/lib/features/live-relay";
-import { useLiveFeatureRelay } from "@/components/features/use-live-feature-relay";
+import { useLiveRelay } from "@/components/features/use-live-relay";
 import type { FeatureEvent, JobStatus } from "@/lib/features/types";
 import type { FeatureStatus } from "@/lib/features/statuses";
 import { GrillQuestionCard } from "@/components/features/grill-question-card";
@@ -210,14 +210,18 @@ export function FeatureGrillClient() {
 
   /*
    * Issue #25: this page was the first relay-driven surface, and it now shares
-   * `useLiveFeatureRelay` with the build-progress panel and the Testing tab —
-   * three copies of this wiring would have drifted, and the wiring is subtle
-   * enough (the callback ref, the coalescer, "live" only on a confirmed
-   * subscription) that drift would have been silent.
+   * `useLiveRelay` with the other three — copies of this wiring would have drifted,
+   * and the wiring is subtle enough (the callback ref, the coalescer, "live" only on
+   * a confirmed subscription) that drift would have been silent.
+   *
+   * ADR 033 §3: the hook takes a **scope** rather than a feature id, so this page and
+   * the design-session view differ by one argument rather than by which hook they
+   * import. The scope's kind is what stops a session id arriving in a field named for
+   * a feature.
    */
-  const { isLive } = useLiveFeatureRelay({
+  const { isLive } = useLiveRelay({
     projectId,
-    featureId,
+    scope: { kind: "feature", id: featureId },
     onEvent: () => void poll(),
     // Deltas append directly rather than triggering a re-read: a delta is text,
     // not a state change, and the authoritative `agent_text` still arrives over

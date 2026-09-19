@@ -20,9 +20,13 @@ import {
   isDesignReplyPending,
 } from "@/lib/features/design";
 import { pollIntervalMsForRelay } from "@/lib/features/live-relay";
+import {
+  countAgentTextEvents,
+  shouldDropStreamBuffer,
+} from "@/lib/features/grill-stream";
 import type { DesignSession, FeatureEvent, Project } from "@/lib/features/types";
 import { LoadFailure } from "@/components/ui/load-failure";
-import { useLiveDesignRelay } from "@/components/designs/use-live-design-relay";
+import { useLiveRelay } from "@/components/features/use-live-relay";
 
 export function DesignSessionClient({
   projectId,
@@ -39,6 +43,20 @@ export function DesignSessionClient({
   const [cancelling, setCancelling] = useState(false);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /*
+   * Issue #95: the agent's prose arrives per *token* now, not per message.
+   *
+   * The buffer holds text that has arrived over the relay and is not yet in the
+   * transcript. It is provisional by construction: the deltas for one message
+   * concatenate to exactly the `agent_text` that supersedes them, so it is a preview
+   * of a record that is about to exist rather than a record in its own right. The
+   * rules that keep that true are **shared with the grill transcript** rather than
+   * copied — `lib/features/grill-stream.ts` is generic over "an agent's prose,
+   * streamed then persisted", and a second copy of the supersede rule is a second
+   * thing to get subtly wrong.
+   */
+  const [streamingText, setStreamingText] = useState("");
+  const agentTextCountRef = useRef(0);
 
   /*
    * A ref rather than the old effect-local `active` flag: `poll` is now shared by
@@ -61,6 +79,21 @@ export function DesignSessionClient({
         fetchDesignEvents(projectId, sessionId),
       ]);
       if (!mountedRef.current) return;
+      // The buffer's supersede rules live in `lib/features/grill-stream.ts` so they
+      // are unit-testable; see that module for why each one is needed. Shared with
+      // the grill rather than reimplemented — the same two ways of going stale apply
+      // to any streamed-then-persisted message.
+      const agentTextCount = countAgentTextEvents(eventData.events);
+      if (
+        shouldDropStreamBuffer({
+          previousAgentTextCount: agentTextCountRef.current,
+          agentTextCount,
+          jobStatus: eventData.session.status,
+        })
+      ) {
+        setStreamingText("");
+      }
+      agentTextCountRef.current = agentTextCount;
       setProject(projectData);
       setSession(eventData.session);
       setEvents(eventData.events);
@@ -77,11 +110,23 @@ export function DesignSessionClient({
    * frame is a *change signal* and nothing more (ADR 019 item 7) — `poll` above
    * stays the only state path, so a re-read is exactly what the interval used to
    * trigger, just at the moment something changed.
+   *
+   * ADR 033 §3: the hook takes a **scope** rather than a session id, so this page
+   * and the grill differ by one argument and share one hook. The scope's id is the
+   * session id, which is also the job id — that is how the REST route resolves it.
+   *
+   * Issue #95: `onDelta` is new here, and it is what makes this surface stream. A
+   * design session's prose used to arrive per *message*, because the delta path was
+   * feature-scoped end to end and a `design_grill` job has no feature — so it was
+   * dropped at the publisher. Deltas now carry a scope like every other frame, so
+   * there is nothing design-specific about this callback; it appends, exactly as the
+   * grill's does.
    */
-  const { isLive } = useLiveDesignRelay({
+  const { isLive } = useLiveRelay({
     projectId,
-    sessionId,
+    scope: { kind: "design_session", id: sessionId },
     onEvent: () => void poll(),
+    onDelta: (text) => setStreamingText((previous) => previous + text),
   });
 
   /*
@@ -183,7 +228,19 @@ export function DesignSessionClient({
             </div>
             <div className="min-h-0 flex-1 space-y-3 overflow-y-auto">
               {events.map((event) => <DesignEvent key={event.id} event={event} />)}
-              {events.length === 0 && <p className="text-sm text-shadow">Starting the design session…</p>}
+              {running && streamingText ? (
+                /*
+                 * The growing bubble: the model's own words as they arrive. It is
+                 * replaced, not appended to, the moment the finished message is
+                 * persisted (see the supersede rule in `poll`), so the conversation
+                 * never shows the same text twice. Mirrors the grill transcript's
+                 * bubble, deliberately — the two surfaces now read the same way.
+                 */
+                <Bubble label="Agent" content={streamingText} />
+              ) : null}
+              {events.length === 0 && !streamingText && (
+                <p className="text-sm text-shadow">Starting the design session…</p>
+              )}
             </div>
             {activeEvent && running && (
               <div className="mt-4 flex gap-2">

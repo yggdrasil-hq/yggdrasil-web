@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 import {
   LIVE_APP_CLOSE_PROTOCOL,
   LIVE_APP_CLOSE_UNAUTHORIZED,
-  LIVE_DELTA_FRAME_TYPE,
   LIVE_MAX_RECONNECT_ATTEMPTS,
   LIVE_RECONNECT_BASE_MS,
   LIVE_RECONNECT_MAX_MS,
@@ -10,26 +9,32 @@ import {
   createLiveRelay,
   createRefreshCoalescer,
   deltaTextFromFrame,
-  featureSubscription,
-  jobEventFromFrame,
+  eventFromFrame,
+  isScopeFor,
   liveSocketUrl,
   parseLiveFrame,
   pollIntervalMsForRelay,
   reconnectDelayMs,
+  scopeSubscription,
+  scopesEqual,
+  type LiveScope,
   type LiveSocket,
 } from "@/lib/features/live-relay";
 
 const PROJECT_ID = "22222222-2222-4222-8222-222222222222";
 const FEATURE_ID = "33333333-3333-4333-8333-333333333333";
 
+/** ADR 033 §1: the scope every case in this file subscribes to. */
+const FEATURE_SCOPE: LiveScope = { kind: "feature", id: FEATURE_ID };
+
 /**
- * The feature protocol, from its one home in `lib/` rather than restated here — so
- * these three call sites exercise the implementation the hook actually uses. See the
- * note in `live-relay-design.test.ts` for why that distinction turned out to matter:
- * a restated protocol is a copy no mutation can falsify.
+ * The scope protocol, from its one home in `lib/` rather than restated here — so
+ * these call sites exercise the implementation the hook actually uses. See the note in
+ * `live-relay-design.test.ts` for why that distinction turned out to matter: a
+ * restated protocol is a copy no mutation can falsify.
  */
-function featureProtocol() {
-  return featureSubscription({ projectId: PROJECT_ID, featureId: FEATURE_ID });
+function scopeProtocol() {
+  return scopeSubscription({ projectId: PROJECT_ID, scope: FEATURE_SCOPE });
 }
 
 function makeSocket() {
@@ -84,7 +89,7 @@ function buildRelay(options: { maxAttempts?: number } = {}) {
 
   const relay = createLiveRelay({
     url: "ws://api.test/api/ws",
-    protocol: featureProtocol(),
+    protocol: scopeProtocol(),
     onEvent,
     onDelta,
     onStatusChange: (status) => statuses.push(status),
@@ -110,28 +115,24 @@ function buildRelay(options: { maxAttempts?: number } = {}) {
 }
 
 function subscribeFrame(): string {
-  return JSON.stringify({ type: "subscribe", projectId: PROJECT_ID, featureId: FEATURE_ID });
+  return JSON.stringify({ type: "subscribe", projectId: PROJECT_ID, scope: FEATURE_SCOPE });
 }
 
-function jobEventMessage() {
+function eventMessage() {
   return {
     data: JSON.stringify({
-      type: "job_event",
-      featureId: FEATURE_ID,
-      jobId: "job_1",
+      type: "event",
+      scope: FEATURE_SCOPE,
       event: { id: "event_1", type: "agent_text", message: "hi", createdAt: "2026-09-18T10:00:00.000Z" },
     }),
   };
 }
 
 function deltaMessage(text: string) {
+  // No `jobId` on the frame — ADR 033 §1's shape is `{type, scope, text}`, and the job
+  // stays in the NOTIFY payload where the byte ceiling and the log line use it.
   return {
-    data: JSON.stringify({
-      type: LIVE_DELTA_FRAME_TYPE,
-      featureId: FEATURE_ID,
-      jobId: "job_1",
-      text,
-    }),
+    data: JSON.stringify({ type: "delta", scope: FEATURE_SCOPE, text }),
   };
 }
 
@@ -199,19 +200,56 @@ describe("parseLiveFrame", () => {
   });
 });
 
-describe("jobEventFromFrame", () => {
-  it("returns the event for a job_event frame", () => {
-    const event = jobEventFromFrame({
-      type: "job_event",
-      event: { id: "event_1", type: "agent_text" },
-    });
+describe("eventFromFrame (ADR 033 §1)", () => {
+  it("returns the event for an `event` frame carrying this scope", () => {
+    const event = eventFromFrame(
+      { type: "event", scope: FEATURE_SCOPE, event: { id: "event_1", type: "agent_text" } },
+      FEATURE_SCOPE,
+    );
     expect(event).toMatchObject({ id: "event_1" });
   });
 
   it("returns null for other frames and for a missing payload", () => {
-    expect(jobEventFromFrame({ type: "pong" })).toBeNull();
-    expect(jobEventFromFrame({ type: "job_event" })).toBeNull();
-    expect(jobEventFromFrame({ type: "job_event", event: null })).toBeNull();
+    expect(eventFromFrame({ type: "pong" }, FEATURE_SCOPE)).toBeNull();
+    expect(eventFromFrame({ type: "event", scope: FEATURE_SCOPE }, FEATURE_SCOPE)).toBeNull();
+    expect(
+      eventFromFrame({ type: "event", scope: FEATURE_SCOPE, event: null }, FEATURE_SCOPE),
+    ).toBeNull();
+  });
+
+  it("refuses an event for a different scope, which is the check version 1 could not make", () => {
+    // One frame type now serves every scope, so the *only* thing keeping a feature
+    // reader from acting on a test's or a design session's event is this check. It is
+    // the trade ADR 033 §1 names explicitly: weaker at the point of reading, stronger
+    // at the point of writing — and this is what makes "weaker" still correct.
+    const event = { id: "event_1", type: "agent_text" };
+    expect(
+      eventFromFrame({ type: "event", scope: { kind: "test", id: FEATURE_ID }, event }, FEATURE_SCOPE),
+    ).toBeNull();
+    // The same *id* under another kind must not satisfy it either: the id spaces
+    // overlap (both are uuids from one source), so comparing ids alone would let a
+    // session id pass as a feature id.
+    expect(
+      eventFromFrame(
+        { type: "event", scope: { kind: "design_session", id: FEATURE_ID }, event },
+        FEATURE_SCOPE,
+      ),
+    ).toBeNull();
+    expect(eventFromFrame({ type: "event", scope: undefined, event }, FEATURE_SCOPE)).toBeNull();
+  });
+});
+
+describe("isScopeFor / scopesEqual", () => {
+  it("compares the whole pair, not just the id", () => {
+    expect(isScopeFor(FEATURE_SCOPE, FEATURE_SCOPE)).toBe(true);
+    expect(isScopeFor({ kind: "feature", id: FEATURE_ID }, FEATURE_SCOPE)).toBe(true);
+    expect(isScopeFor({ kind: "test", id: FEATURE_ID }, FEATURE_SCOPE)).toBe(false);
+    expect(isScopeFor({ kind: "feature", id: "other" }, FEATURE_SCOPE)).toBe(false);
+    expect(isScopeFor(null, FEATURE_SCOPE)).toBe(false);
+    expect(isScopeFor("feature", FEATURE_SCOPE)).toBe(false);
+
+    expect(scopesEqual(FEATURE_SCOPE, { kind: "feature", id: FEATURE_ID })).toBe(true);
+    expect(scopesEqual(FEATURE_SCOPE, { kind: "feature", id: "other" })).toBe(false);
   });
 });
 
@@ -257,33 +295,51 @@ describe("createRefreshCoalescer", () => {
 });
 
 describe("deltaTextFromFrame", () => {
-  it("returns the text of a delta frame", () => {
+  it("returns the text of a delta frame for this scope", () => {
     expect(
-      deltaTextFromFrame({ type: LIVE_DELTA_FRAME_TYPE, featureId: FEATURE_ID, jobId: "job_1", text: "Hello " }),
+      deltaTextFromFrame({ type: "delta", scope: FEATURE_SCOPE, text: "Hello " }, FEATURE_SCOPE),
     ).toBe("Hello ");
   });
 
   it("preserves whitespace, since the client concatenates", () => {
     // A chunk is often a single space or a newline; trimming here would corrupt
     // the streamed text in a way no later event could repair.
-    expect(deltaTextFromFrame({ type: LIVE_DELTA_FRAME_TYPE, text: " " })).toBe(" ");
-    expect(deltaTextFromFrame({ type: LIVE_DELTA_FRAME_TYPE, text: "\n\n" })).toBe("\n\n");
+    expect(deltaTextFromFrame({ type: "delta", scope: FEATURE_SCOPE, text: " " }, FEATURE_SCOPE)).toBe(" ");
+    expect(
+      deltaTextFromFrame({ type: "delta", scope: FEATURE_SCOPE, text: "\n\n" }, FEATURE_SCOPE),
+    ).toBe("\n\n");
   });
 
   it("returns null for other frames, a missing text, and an empty text", () => {
-    expect(deltaTextFromFrame({ type: "job_event" })).toBeNull();
-    expect(deltaTextFromFrame({ type: "pong" })).toBeNull();
-    expect(deltaTextFromFrame({ type: LIVE_DELTA_FRAME_TYPE })).toBeNull();
-    expect(deltaTextFromFrame({ type: LIVE_DELTA_FRAME_TYPE, text: "" })).toBeNull();
-    expect(deltaTextFromFrame({ type: LIVE_DELTA_FRAME_TYPE, text: 42 })).toBeNull();
+    expect(deltaTextFromFrame({ type: "event", scope: FEATURE_SCOPE }, FEATURE_SCOPE)).toBeNull();
+    expect(deltaTextFromFrame({ type: "pong" }, FEATURE_SCOPE)).toBeNull();
+    expect(deltaTextFromFrame({ type: "delta", scope: FEATURE_SCOPE }, FEATURE_SCOPE)).toBeNull();
+    expect(deltaTextFromFrame({ type: "delta", scope: FEATURE_SCOPE, text: "" }, FEATURE_SCOPE)).toBeNull();
+    expect(deltaTextFromFrame({ type: "delta", scope: FEATURE_SCOPE, text: 42 }, FEATURE_SCOPE)).toBeNull();
+  });
+
+  it("refuses a delta for another scope", () => {
+    // Issue #95 is what makes this matter on the design page: both the grill and the
+    // design session now receive deltas, so a scope-blind reader would append a design
+    // session's prose to the grill transcript.
+    expect(
+      deltaTextFromFrame(
+        { type: "delta", scope: { kind: "design_session", id: FEATURE_ID }, text: "mockup" },
+        FEATURE_SCOPE,
+      ),
+    ).toBeNull();
   });
 
   it("does not confuse a delta with a stored event", () => {
     // The two are disjoint, and the client acts differently on each: one appends
     // text, the other re-reads. Mistaking one for the other would either drop
     // the stream or trigger a request per chunk.
-    expect(jobEventFromFrame({ type: LIVE_DELTA_FRAME_TYPE, text: "x" })).toBeNull();
-    expect(deltaTextFromFrame({ type: "job_event", event: {} })).toBeNull();
+    expect(
+      eventFromFrame({ type: "delta", scope: FEATURE_SCOPE, text: "x" }, FEATURE_SCOPE),
+    ).toBeNull();
+    expect(
+      deltaTextFromFrame({ type: "event", scope: FEATURE_SCOPE, event: {} }, FEATURE_SCOPE),
+    ).toBeNull();
   });
 });
 
@@ -318,7 +374,7 @@ describe("createLiveRelay: deltas", () => {
     const { socket, onEvent, onDelta } = buildRelay();
     socket().onopen?.();
 
-    socket().onmessage?.(jobEventMessage());
+    socket().onmessage?.(eventMessage());
 
     expect(onEvent).toHaveBeenCalledTimes(1);
     expect(onDelta).not.toHaveBeenCalled();
@@ -342,7 +398,7 @@ describe("createLiveRelay: deltas", () => {
     const socket = makeSocket();
     const relay = createLiveRelay({
       url: "ws://api.test/api/ws",
-      protocol: featureProtocol(),
+      protocol: scopeProtocol(),
       onEvent: vi.fn(),
       socketFactory: () => socket,
       schedule: () => 0,
@@ -385,20 +441,20 @@ describe("createLiveRelay", () => {
 
     // An open socket that has not been accepted for this feature receives
     // nothing, so treating it as live would strand the page on the slow poll.
-    socket().onmessage?.({ data: JSON.stringify({ type: "ready", protocolVersion: 1 }) });
+    socket().onmessage?.({ data: JSON.stringify({ type: "ready", protocolVersion: 2 }) });
     expect(relay.status()).toBe("connecting");
   });
 
   it("goes live only once subscribed", () => {
     const { relay, socket, statuses } = buildRelay();
     socket().onopen?.();
-    socket().onmessage?.({ data: JSON.stringify({ type: "subscribed", featureId: FEATURE_ID }) });
+    socket().onmessage?.({ data: JSON.stringify({ type: "subscribed", scope: FEATURE_SCOPE }) });
 
     expect(relay.status()).toBe("live");
     expect(statuses).toEqual(["connecting", "live"]);
   });
 
-  it("signals a change for a job_event and ignores other frames", () => {
+  it("signals a change for an `event` frame and ignores other frames", () => {
     const { socket, onEvent } = buildRelay();
     socket().onopen?.();
 
@@ -406,14 +462,14 @@ describe("createLiveRelay", () => {
     socket().onmessage?.({ data: "not json" });
     expect(onEvent).not.toHaveBeenCalled();
 
-    socket().onmessage?.(jobEventMessage());
+    socket().onmessage?.(eventMessage());
     expect(onEvent).toHaveBeenCalledTimes(1);
   });
 
   it("reconnects with backoff after an ordinary close", () => {
     const { relay, socket, scheduler, statuses } = buildRelay();
     socket().onopen?.();
-    socket().onmessage?.({ data: JSON.stringify({ type: "subscribed", featureId: FEATURE_ID }) });
+    socket().onmessage?.({ data: JSON.stringify({ type: "subscribed", scope: FEATURE_SCOPE }) });
     expect(relay.status()).toBe("live");
 
     socket().onclose?.({ code: 1006 });
@@ -422,6 +478,43 @@ describe("createLiveRelay", () => {
 
     scheduler.run(0);
     expect(relay.status()).toBe("connecting");
+  });
+
+  /*
+   * ADR 033 §4's client half: **a version-1 client meeting a version-2 server ends up
+   * polling, not dead.**
+   *
+   * The frame sequence below is not invented — it is what the real version-2 API sends
+   * for a version-1 frame, recorded from
+   * `api/scripts/verify-live-relay/verify.cjs`'s `version1ClientDegradesToPolling`,
+   * which drives a real `ws` client at a real socket and prints these bytes. So the two
+   * halves of the degradation proof are pinned to the same sequence rather than to two
+   * independent guesses: the harness proves the *server* answers that way over the wire,
+   * and this proves the *real client* answers those frames by falling back.
+   *
+   * Three assertions, because "polling rather than dead" is three claims:
+   *
+   *  - `ready` announces version **2**, which is the one thing a client can compare —
+   *    the version bump has to match the wire or the signal is useless.
+   *  - The `error` frame leaves the relay `off`, which is the state the page's own fast
+   *    poll runs in. `off` (stopped) rather than `connecting` is the distinction that
+   *    matters: a refusal is not retryable, and a client that reconnected would spend a
+   *    minute in backoff before reaching the same poll.
+   *  - **No reconnect is scheduled at all**, which is what makes it "not dead" rather
+   *    than "not yet dead".
+   */
+  it("falls back to polling when a version-1 frame meets a version-2 server (ADR 033 §4)", () => {
+    const { relay, socket, scheduler, statuses } = buildRelay();
+    socket().onopen?.();
+
+    // The recorded sequence, in order.
+    socket().onmessage?.({ data: JSON.stringify({ type: "ready", protocolVersion: 2 }) });
+    socket().onmessage?.({ data: JSON.stringify({ type: "error", message: "Unrecognised frame" }) });
+
+    expect(relay.status()).toBe("off");
+    expect(statuses.at(-1)).toBe("off");
+    expect(scheduler.tasks).toHaveLength(0);
+    expect(socket().closed).toBe(true);
   });
 
   it("backs off further on each successive failure", () => {
@@ -502,7 +595,7 @@ describe("createLiveRelay", () => {
     const scheduler = makeScheduler();
     const relay = createLiveRelay({
       url: "ws://api.test/api/ws",
-      protocol: featureProtocol(),
+      protocol: scopeProtocol(),
       onEvent: vi.fn(),
       socketFactory: () => {
         throw new Error("blocked");
@@ -523,10 +616,10 @@ describe("createLiveRelay", () => {
     scheduler.run(0);
 
     expect(sockets).toHaveLength(2);
-    sockets[0].onmessage?.({ data: JSON.stringify({ type: "subscribed", featureId: FEATURE_ID }) });
+    sockets[0].onmessage?.({ data: JSON.stringify({ type: "subscribed", scope: FEATURE_SCOPE }) });
     expect(relay.status()).toBe("connecting");
 
-    sockets[1].onmessage?.({ data: JSON.stringify({ type: "subscribed", featureId: FEATURE_ID }) });
+    sockets[1].onmessage?.({ data: JSON.stringify({ type: "subscribed", scope: FEATURE_SCOPE }) });
     expect(relay.status()).toBe("live");
   });
 
@@ -543,7 +636,7 @@ describe("createLiveRelay", () => {
   it("stops cleanly: closes the socket, cancels the retry, and is idempotent", () => {
     const { relay, socket, scheduler, onEvent } = buildRelay();
     socket().onopen?.();
-    socket().onmessage?.({ data: JSON.stringify({ type: "subscribed", featureId: FEATURE_ID }) });
+    socket().onmessage?.({ data: JSON.stringify({ type: "subscribed", scope: FEATURE_SCOPE }) });
     socket().onclose?.({ code: 1006 });
     expect(scheduler.pendingDelays()).toHaveLength(1);
 
@@ -556,7 +649,7 @@ describe("createLiveRelay", () => {
     // A cancelled retry must not resurrect the relay, and a stopped relay must
     // not keep signalling changes.
     scheduler.run(0);
-    socket().onmessage?.(jobEventMessage());
+    socket().onmessage?.(eventMessage());
     expect(onEvent).not.toHaveBeenCalled();
   });
 

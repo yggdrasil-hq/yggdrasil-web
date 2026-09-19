@@ -26,6 +26,16 @@ import type { FeatureEvent } from "./types";
  *    re-read is now the thing
  *    `src/features/relay-surfaces.test.ts` checks every subscribed surface for,
  *    rather than a property asserted from one place about four others.
+ *
+ * **Protocol version 2 (ADR 033).** Version 1 named the scope in the frame type —
+ * `job_event`, `design_session_event`, `subscribe_design` — so every new scope cost
+ * a frame name and a second reader on this side too. Every scope-bearing frame now
+ * carries a `scope` value, one reader serves all of them, and the API replaced
+ * version 1 rather than keeping both (ADR 033 §4). A version-1 client meeting a
+ * version-2 API is answered with an `error` frame, which this module treats as
+ * terminal and answers by falling back to the poll — proved by running, not assumed:
+ * `api/scripts/verify-live-relay/verify.cjs` drives a version-1 frame at the real
+ * socket and watches a real client degrade.
  */
 
 /**
@@ -162,58 +172,98 @@ export function parseLiveFrame(raw: unknown): LiveFrame | null {
 }
 
 /**
- * The event a `job_event` frame carries, or null. Cast rather than fully
- * validated: the frame comes from the API, and the page treats the payload
- * exactly as it treats an event from the REST read (which is also trusted), so
- * re-validating one and not the other would be inconsistent.
+ * The kinds of thing a socket can subscribe to — **a closed union**, mirroring the
+ * API's `LiveScopeKind` (`api/src/live/types.ts`), which is the authority (ADR 033).
+ *
+ * Duplicated across the two repos because they share no code, which is the same
+ * situation `LIVE_SOCKET_PATH` is in, so it is named and documented rather than
+ * inlined twice. A kind the API does not know cannot be sent from here: the union
+ * has three members and there is no string path into `subscribe`.
  */
-export function jobEventFromFrame(frame: LiveFrame): FeatureEvent | null {
-  if (frame.type !== "job_event") return null;
+export type LiveScopeKind = "feature" | "design_session" | "test";
+
+/**
+ * One subscription: what kind of thing, and which one (ADR 033 §1).
+ *
+ * **The tag travels with the id, and that is what replaced version 1's frame
+ * names.** Version 1 had `subscribe`/`subscribe_design`/`subscribe_test` and three
+ * matching event frames, so each new scope cost a frame name and a second reader on
+ * both sides. Here the id's meaning is carried by `kind`, so one frame shape serves
+ * all three — and the reader can *check* that a frame belongs to the subscription it
+ * made, which version 1's separate types could only imply.
+ */
+export interface LiveScope {
+  kind: LiveScopeKind;
+  id: string;
+}
+
+/** Whether two scopes name the same subscription. Mirrors the API's `scopesEqual`. */
+export function scopesEqual(a: LiveScope, b: LiveScope): boolean {
+  return a.kind === b.kind && a.id === b.id;
+}
+
+/**
+ * The event an `event` frame carries for **this** scope, or null.
+ *
+ * **One reader for every scope, with the scope checked rather than assumed.** Two
+ * things are different from version 1, and both are deliberate:
+ *
+ *  - There is one reader where there were two (`jobEventFromFrame` and
+ *    `designSessionEventFromFrame`), because there is now one frame. The old split
+ *    existed to stop a session id flowing into something expecting a feature id; that
+ *    protection is now the `scope` check below, which is stronger, because it rejects
+ *    a *correctly-typed* frame for the wrong resource rather than only a wrong type.
+ *  - **The scope is checked even though the server already routes per topic.** A
+ *    socket is subscribed to one scope per hook instance, so a mismatched frame
+ *    should be impossible — but "should be impossible" is what the frame's own tag
+ *    lets us verify cheaply, and a dropped frame costs a re-read that will happen
+ *    anyway on the next tick. Version 1 checked the echoed id on `subscribed` and
+ *    nothing else; this checks every scope-bearing frame.
+ *
+ * Casting the payload rather than deep-validating it, as before: the frame comes from
+ * the API over an authenticated socket and is treated exactly as trustingly as the
+ * REST payload it approximates.
+ */
+export function eventFromFrame(frame: LiveFrame, scope: LiveScope): FeatureEvent | null {
+  if (frame.type !== "event") return null;
+  const frameScope = frame.scope;
+  if (!isScopeFor(frameScope, scope)) return null;
   const event = frame.event;
   if (typeof event !== "object" || event === null) return null;
   return event as FeatureEvent;
 }
 
 /**
- * The event a `design_session_event` frame carries, or null (issue #25).
+ * Whether a frame's `scope` field names exactly `scope`.
  *
- * **Deliberately a separate reader rather than a generalisation of
- * `jobEventFromFrame`.** The two frames differ in exactly one way that matters —
- * the scope field is `sessionId` where the feature frame's is `featureId` — and a
- * shared helper taking "either one" would be the confusion the distinct frame type
- * exists to prevent: a caller could stop asking which frame it holds, and a session
- * id would silently flow into something expecting a feature id. Two readers mean a
- * reader of either hook sees exactly one protocol.
- *
- * The `sessionId` on the frame is not checked against the subscribed session: the
- * socket is subscribed to one topic per hook instance, and the feature path takes
- * the same approach. `lib/features/live-relay.test.ts` asserts the two readers do
- * not accept each other's frames, which is the property that actually needs
- * guarding.
+ * Structural rather than a cast: a frame carrying `{kind: "test", id: …}` must not
+ * satisfy a feature subscription, and comparing the whole pair is what makes that so.
+ * The `id` comparison is not redundant with the `kind` one — the same uuid is a
+ * feature id in one scope and a job id in another, which is the confusion the tagged
+ * scope exists to remove.
  */
-export function designSessionEventFromFrame(frame: LiveFrame): FeatureEvent | null {
-  if (frame.type !== "design_session_event") return null;
-  const event = frame.event;
-  if (typeof event !== "object" || event === null) return null;
-  return event as FeatureEvent;
+export function isScopeFor(value: unknown, scope: LiveScope): boolean {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return candidate.kind === scope.kind && candidate.id === scope.id;
 }
 
 /**
- * The frame carrying one streaming chunk of assistant text (ADR 019 item 13).
- * Reserved in the protocol from the start; the client ignores unknown frames, so
- * a server that predates it simply never sends one.
- */
-export const LIVE_DELTA_FRAME_TYPE = "job_event_delta";
-
-/**
- * The text a delta frame carries, or null.
+ * The text a `delta` frame carries for this scope, or null.
  *
- * Mirrors `jobEventFromFrame`: casts rather than deep-validating, because the
- * frame comes from the API over an already-authenticated socket and is treated
- * exactly as trustingly as the REST payload it approximates.
+ * The frame name is `delta` in version 2 (it was `job_event_delta`), and it carries
+ * the scope like every other scope-bearing frame — the API keeps `jobId` in the
+ * *payload* for its byte ceiling, but the frame has only `{scope, text}`, because a
+ * delta is text to append and the authoritative `agent_text` that supersedes it
+ * carries the job.
+ *
+ * Returns null for an empty string as well as for a mismatch, matching version 1:
+ * appending nothing is indistinguishable from a bug, and the frame is a preview of a
+ * record that is about to exist.
  */
-export function deltaTextFromFrame(frame: LiveFrame): string | null {
-  if (frame.type !== LIVE_DELTA_FRAME_TYPE) return null;
+export function deltaTextFromFrame(frame: LiveFrame, scope: LiveScope): string | null {
+  if (frame.type !== "delta") return null;
+  if (!isScopeFor(frame.scope, scope)) return null;
   const text = frame.text;
   return typeof text === "string" && text !== "" ? text : null;
 }
@@ -221,10 +271,13 @@ export function deltaTextFromFrame(frame: LiveFrame): string | null {
 /**
  * What one socket's lifecycle needs to know about the scope it serves.
  *
- * Three facts, all scope-specific: what frame subscribes, what frame confirms it,
- * and what frame means "something changed". Keeping them together is what lets
- * `createLiveRelay` be protocol-blind — it holds one of these and never branches on
- * which scope it came from.
+ * Two facts now, where version 1 needed three: what frame subscribes, and which
+ * frames belong to this socket. The separate "what frame confirms the subscription"
+ * predicate is gone because the confirmation is not a different frame per scope — it
+ * is `subscribed` carrying this scope, so the same predicate answers it.
+ *
+ * Keeping the protocol a *value* is what lets `createLiveRelay` stay protocol-blind:
+ * it holds one of these and never branches on which scope it came from.
  */
 export interface LiveProtocol {
   /** Sent verbatim on open, and again after every reconnect. */
@@ -233,58 +286,37 @@ export interface LiveProtocol {
   isSubscribed: (frame: LiveFrame) => boolean;
   /** Whether a frame carries an event for this scope, and so means "re-read". */
   isEventFrame: (frame: LiveFrame) => boolean;
+  /** The streaming text this frame carries for this scope, or null (ADR 019 item 13). */
+  deltaText: (frame: LiveFrame) => string | null;
 }
 
 /**
- * The feature protocol: `subscribe` / `subscribed` / `job_event` (ADR 019).
+ * The protocol for one scope: `subscribe` / `subscribed` / `event`, all scope-tagged
+ * (ADR 033 §1).
  *
- * **The echoed id is checked on the confirmation.** The server always sends it —
- * `safeSend(connection, { type: "subscribed", featureId })`
- * (`api/src/live/socket.ts`) — and the frame type declares it as required, so a
- * `subscribed` naming another feature is a server bug rather than a shape to
- * tolerate. Treating it as live would leave the page on the 30s safety interval
- * receiving nothing, which looks identical to a quiet session until someone times
- * it. Being stricter than the server here fails *safe*: an unrecognised
- * confirmation degrades to the fast poll that worked before the relay existed.
+ * **One builder where version 1 had `featureSubscription` and
+ * `designSubscription`.** The two differed in exactly the frames they sent and read,
+ * and every one of those now carries a scope instead — so the difference is the
+ * scope, which is an argument. ADR 033 §3's claim is that a new scope costs data
+ * rather than a protocol, and this function is where that is true or not: adding
+ * `test` here needs no edit at all.
+ *
+ * **The scope is checked on the confirmation.** The server echoes the scope it
+ * accepted, so a `subscribed` naming another resource is a server bug rather than a
+ * shape to tolerate; treating it as live would leave the page on the 30s safety
+ * interval receiving nothing, which looks identical to a quiet session until someone
+ * times it. Being stricter than the server here fails *safe*: an unrecognised
+ * confirmation degrades to the poll that worked before the relay existed.
  */
-export function featureSubscription(input: {
+export function scopeSubscription(input: {
   projectId: string;
-  featureId: string;
+  scope: LiveScope;
 }): LiveProtocol {
   return {
-    subscribeFrame: { type: "subscribe", projectId: input.projectId, featureId: input.featureId },
-    isSubscribed: (frame) =>
-      frame.type === "subscribed" && frame.featureId === input.featureId,
-    isEventFrame: (frame) => jobEventFromFrame(frame) !== null,
-  };
-}
-
-/**
- * The design-session protocol: `subscribe_design` / `subscribed_design` /
- * `design_session_event` (issue #25).
- *
- * The peer of `featureSubscription`, and separate rather than parameterised for the
- * reason the API gave the frame its own name: a session id must never travel where
- * a feature id is expected, and two protocols in one function is the arrangement
- * that invites exactly that.
- *
- * Note there is **no delta** path: streaming deltas are feature-scoped end to end
- * (`publishDelta` refuses a job with no `feature_id`), so a design session's prose
- * arrives as stored `agent_text` events — per message, not per token. Issue #95.
- */
-export function designSubscription(input: {
-  projectId: string;
-  sessionId: string;
-}): LiveProtocol {
-  return {
-    subscribeFrame: {
-      type: "subscribe_design",
-      projectId: input.projectId,
-      sessionId: input.sessionId,
-    },
-    isSubscribed: (frame) =>
-      frame.type === "subscribed_design" && frame.sessionId === input.sessionId,
-    isEventFrame: (frame) => designSessionEventFromFrame(frame) !== null,
+    subscribeFrame: { type: "subscribe", projectId: input.projectId, scope: input.scope },
+    isSubscribed: (frame) => frame.type === "subscribed" && isScopeFor(frame.scope, input.scope),
+    isEventFrame: (frame) => eventFromFrame(frame, input.scope) !== null,
+    deltaText: (frame) => deltaTextFromFrame(frame, input.scope),
   };
 }
 
@@ -293,22 +325,20 @@ export interface LiveRelayDeps {
   /**
    * How to subscribe this socket, and how to read what comes back.
    *
-   * **Why the protocol is a value rather than a scope flag.** There are two
-   * protocols now — `subscribe`/`subscribed`/`job_event` for a feature (ADR 019) and
-   * `subscribe_design`/`subscribed_design`/`design_session_event` for a design
-   * session (issue #25) — and the relay should know neither. It owns one socket's
-   * lifecycle and nothing else; a `kind` branch checked here would hold both
-   * protocols in the one file both scopes share, which is a branch away from being
-   * conflated. As a value, each hook names exactly one protocol and this file
-   * cannot tell them apart.
+   * **Why the protocol is a value rather than a scope flag.** The relay owns one
+   * socket's lifecycle and nothing else: it should not know which scope it serves,
+   * because a `kind` branch here would put the scopes' frames in the one file they
+   * all share, which is a branch away from being conflated. As a value, the caller
+   * names exactly one scope and this file cannot tell which it was.
    *
-   * Built by `featureSubscription`/`designSubscription` rather than inline in each
-   * hook, so the protocol has one home that a test can exercise directly. A hook is
-   * a React binding and this repo has no React testing library by design, so a
-   * protocol written inline in a hook is only ever covered by a *copy* of itself.
+   * Built by `scopeSubscription` rather than inline in the hook, so the protocol has
+   * one home a test can exercise directly. The hook is a React binding and this repo
+   * has no React testing library by design, so a protocol written inline in a hook is
+   * only ever covered by a *copy* of itself — which is exactly what happened once,
+   * and why the comment on that note survives in `live-relay-design.test.ts`.
    */
   protocol: LiveProtocol;
-  /** A `job_event`/`design_session_event` arrived for whatever this socket subscribed to. */
+  /** An `event` frame arrived for whatever scope this socket subscribed to. */
   onEvent: () => void;
   /**
    * One streaming chunk of assistant text arrived (ADR 019 item 13).
@@ -340,12 +370,11 @@ export interface LiveRelay {
  * pick the poll interval. `stop()` is safe to call twice and is what the React
  * effect's cleanup uses.
  *
- * **Teardown closes the socket without an `unsubscribe` frame**, for both scopes.
- * The server removes the connection — and therefore every subscription on it — on
- * `close` (`api/src/live/socket.ts`), so the frame would be redundant, and a
- * second teardown path is a second thing to get wrong. The `unsubscribe` /
- * `unsubscribe_design` frames exist for a client that stays connected while
- * dropping one subscription, which neither hook does.
+ * **Teardown closes the socket without an `unsubscribe` frame.** The server removes
+ * the connection — and therefore every subscription on it — on `close`
+ * (`api/src/live/socket.ts`), so the frame would be redundant, and a second teardown
+ * path is a second thing to get wrong. `unsubscribe` exists for a client that stays
+ * connected while dropping one subscription, which no surface here does.
  */
 export function createLiveRelay(deps: LiveRelayDeps): LiveRelay {
   const socketFactory = deps.socketFactory ?? ((url: string) => new WebSocket(url) as LiveSocket);
@@ -448,7 +477,7 @@ export function createLiveRelay(deps: LiveRelayDeps): LiveRelay {
       // Deltas are checked before stored events, though the two frame types are
       // disjoint: keeping the provisional path first makes it obvious in the
       // read order that a delta is never a state change, only text.
-      const delta = deltaTextFromFrame(frame);
+      const delta = deps.protocol.deltaText(frame);
       if (delta !== null) {
         deps.onDelta?.(delta);
         return;

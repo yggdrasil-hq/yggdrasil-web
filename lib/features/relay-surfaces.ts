@@ -57,11 +57,16 @@ export const RELAY_LIVE_FLAG = "isLive";
 export const RELAY_POLL_INTERVAL_HELPER = "pollIntervalMsForRelay";
 
 /**
- * The hook modules that make a file a relay surface. Discovery is by import rather
- * than by a hardcoded list of components, so a fifth surface is checked the day it
- * is written instead of the day someone remembers to add it.
+ * The hook module that makes a file a relay surface. Discovery is by import rather
+ * than by a hardcoded list of components, so a fifth surface is checked the day it is
+ * written instead of the day someone remembers to add it.
+ *
+ * **One module where ADR 033 §3 left one hook.** Before it, this list had two entries
+ * because there were two hooks — and the risk it covers is unchanged: a surface that
+ * subscribes must also re-read on connect, and a surface that quietly stopped
+ * importing the hook would drop out of this scan.
  */
-const RELAY_HOOK_MODULES = ["use-live-feature-relay", "use-live-design-relay"];
+const RELAY_HOOK_MODULES = ["use-live-relay"];
 
 const INTERVAL_CALL = "setInterval";
 const EFFECT_CALL = "useEffect";
@@ -73,7 +78,7 @@ export interface RelaySurfaceFile {
 
 export interface RelaySurface {
   path: string;
-  /** The relay hooks the file imports, e.g. `["useLiveFeatureRelay"]`. */
+  /** The relay hooks the file imports, e.g. `["useLiveRelay"]`. */
   hooks: string[];
 }
 
