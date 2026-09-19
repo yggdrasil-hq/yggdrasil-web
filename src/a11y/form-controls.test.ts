@@ -5,6 +5,10 @@ import {
   findUnlabelledControls,
   type SourceFile,
 } from "@/lib/a11y/form-controls";
+import {
+  commentRanges,
+  scannerCommentClaims,
+} from "@/lib/a11y/source-comments";
 
 /**
  * Issue #67: seventeen form controls had no accessible name, and a previous
@@ -143,5 +147,106 @@ describe("the repo's own controls (#67)", () => {
         ? ""
         : `Unlabelled form control(s) — add aria-label, or an id with a matching htmlFor:\n${described}`,
     ).toEqual([]);
+  });
+});
+
+/*
+ * Issue #83: the scan read comments as code, so a tag written in prose was
+ * reported as a control. Its value is entirely in failing on *genuine* misses —
+ * a guard that cries wolf on a doc comment teaches people to add a redundant
+ * `aria-label` to silence it, and the next person to hit it works around the
+ * check instead of trusting it.
+ *
+ * The fix is a set of comment *offsets* (`lib/a11y/source-comments.ts`), not a
+ * rewrite of the source. That distinction is the whole safety argument, and the
+ * last case here is why: a filter that rewrote or misread the text could hide a
+ * real control, which on a safety check is far worse than a false positive.
+ */
+describe("comments are not scanned for controls (#83)", () => {
+  const scan = (source: string, path = "components/x.tsx") =>
+    findUnlabelledControls([{ path, source }]);
+
+  it("does not report a tag written in a block comment (the reported case)", () => {
+    const source = [
+      "export function X() {",
+      "  /**",
+      '   * **Why a native `<input type="radio">`/`checkbox` rather than buttons.**',
+      "   */",
+      '  return <input type="radio" aria-label="ok" />;',
+      "}",
+    ].join("\n");
+
+    // Before #83 this reported the comment on line 3 as an unlabelled input.
+    expect(scan(source)).toEqual([]);
+  });
+
+  it("does not report a tag written in a line comment", () => {
+    const source = ['// replaces an <input type="text" />', "const a = 1;"].join("\n");
+    expect(scan(source)).toEqual([]);
+  });
+
+  it("does not report a tag written in a JSX comment container", () => {
+    // `{/* … */}` is not an AST trivia gap, so a parsed-AST comment walk misses it
+    // — which is why the ranges come from the scanner rather than from the tree.
+    const source =
+      'export const A = () => <div>{/* was <input type="radio" /> */}<input aria-label="x" /></div>;';
+    expect(scan(source)).toEqual([]);
+  });
+
+  it("still reports a real unlabelled control that follows a comment", () => {
+    // The fix must not have made the scan blind past a comment.
+    const source = ["// a comment about <input />", 'export const A = () => <input type="text" />;'].join("\n");
+    const found = scan(source);
+    expect(found).toHaveLength(1);
+    expect(found[0].line).toBe(2);
+  });
+
+  it("still reports a real unlabelled control before a trailing comment", () => {
+    const source = 'export const A = () => <input type="text" />; // <input aria-label="no" />';
+    const found = scan(source);
+    expect(found).toHaveLength(1);
+    expect(found[0].line).toBe(1);
+  });
+
+  it("still reports a control that follows a `//` inside a string literal", () => {
+    // The truncation trap: a naive `//` strip would cut this line at the URL and
+    // stop scanning, losing the control after it.
+    const source = [
+      'const url = "https://example.com";',
+      'export const A = () => <input type="text" />;',
+    ].join("\n");
+    expect(scan(source)).toHaveLength(1);
+  });
+
+  /*
+   * The case that makes the JSX-text correction load-bearing rather than
+   * defensive. A `//` in JSX *text* is literal — but a bare lexical scan cannot
+   * know that and claims the rest of the line, which here contains a genuinely
+   * unlabelled control:
+   *
+   *   <p>see https://example.com</p><input type="text" />
+   *       ^ scanner claims from here …………………………… to here
+   *
+   * This asserts both halves: that the raw scanner claim really does swallow the
+   * control (so a scanner-only filter would hide it silently), and that
+   * `commentRanges` does not. Deleting the JSX-text subtraction makes this fail.
+   */
+  it("does not let a URL in JSX text hide the control after it", () => {
+    const source =
+      'export const A = () => <div><p>see https://example.com</p><input type="text" /></div>;';
+    const controlOffset = source.indexOf("<input");
+
+    const rawClaim = scannerCommentClaims(source).find(
+      (range) => controlOffset >= range.start && controlOffset < range.end,
+    );
+    expect(rawClaim, "expected the raw scanner to claim the control — see the comment").toBeDefined();
+
+    const corrected = commentRanges(source).find(
+      (range) => controlOffset >= range.start && controlOffset < range.end,
+    );
+    expect(corrected).toBeUndefined();
+
+    // And end to end: the control is reported.
+    expect(scan(source)).toHaveLength(1);
   });
 });

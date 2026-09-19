@@ -24,7 +24,20 @@
  *
  * A `placeholder` explicitly does **not** count. It is a hint that disappears as
  * soon as the user types, which is precisely the mistake all seventeen had made.
+ *
+ * **Comments are not scanned for controls (issue #83).** A tag written in prose is
+ * not a control, and reporting it trained readers to distrust the guard — a doc
+ * comment containing `<input type="radio">` failed the check, and the message
+ * quoted the comment back, so the first thing to do was look at the wrong place.
+ *
+ * The correction is a set of comment **offsets** from `source-comments.ts`, and it
+ * deliberately does not rewrite the source: the text below is byte-for-byte what
+ * is in the file, so no line can be shortened and no attribute can be cut off. A
+ * match is skipped by *position*, which is the only way to do this without
+ * risking a false negative on a safety check.
  */
+
+import { commentRanges, isOffsetInRanges } from "./source-comments";
 
 export interface SourceFile {
   path: string;
@@ -123,10 +136,19 @@ export function findUnlabelledControls(files: SourceFile[]): UnlabelledControl[]
     if (file.path.startsWith("components/ui/")) continue;
 
     const { source } = file;
+    // Computed once per file, not per match: it needs a parse, and the scan below
+    // is the only consumer.
+    const comments = commentRanges(source, file.path);
+
     CONTROL_TAG.lastIndex = 0;
     let match: RegExpExecArray | null;
 
     while ((match = CONTROL_TAG.exec(source)) !== null) {
+      // A `<input` inside a comment is prose about a control, not a control. The
+      // offset test is what keeps this from being a text rewrite — see the module
+      // doc above and `source-comments.ts` for why that distinction matters.
+      if (isOffsetInRanges(comments, match.index)) continue;
+
       const end = findTagEnd(source, match.index);
       const tag = source.slice(match.index, end + 1);
 
