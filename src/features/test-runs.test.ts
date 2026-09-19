@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  RUN_HISTORY_POLL_INTERVAL_MS,
   emptyHistoryMessage,
   failingSteps,
   formatDuration,
@@ -14,6 +15,7 @@ import {
   describeTriggerRunFailure,
   summarizeHistory,
 } from "@/lib/features/test-runs";
+import { pollIntervalMsForRelay } from "@/lib/features/live-relay";
 import type { JobStatus, TestRunHistoryEntry } from "@/lib/features/types";
 
 function makeRun(overrides: Partial<TestRunHistoryEntry> = {}): TestRunHistoryEntry {
@@ -404,5 +406,32 @@ describe("emptyHistoryMessage", () => {
 
   it("explains that a fresh test is waiting for its window", () => {
     expect(emptyHistoryMessage(true)).toContain("next scheduled window");
+  });
+});
+
+describe("the run history's fallback interval (#100)", () => {
+  /*
+   * The same rule every converted surface asserts, tied to *this* surface's fallback
+   * constant so the history cannot quietly acquire a fast poll while live. Getting the
+   * direction backwards leaves a connected surface polling at its fallback rate on top
+   * of the socket — strictly worse than before the relay existed, and invisible in any
+   * test that only checked the page renders.
+   */
+  it("polls slowly while live and at the surface's own rate otherwise", () => {
+    // Anchored to `RUN_HISTORY_POLL_INTERVAL_MS` rather than a literal, so a change to
+    // the page's behaviour is reflected here instead of hidden behind a copy of it.
+    expect(
+      pollIntervalMsForRelay({ isLive: true, fallbackMs: RUN_HISTORY_POLL_INTERVAL_MS }),
+    ).toBe(30_000);
+    expect(
+      pollIntervalMsForRelay({ isLive: false, fallbackMs: RUN_HISTORY_POLL_INTERVAL_MS }),
+    ).toBe(RUN_HISTORY_POLL_INTERVAL_MS);
+  });
+
+  it("is not a token-stream interval", () => {
+    // A test run reports a series of steps over minutes, so the surface that lists runs
+    // should not poll at the grill transcript's 2s rate. Asserted as a bound rather than
+    // an equality so raising it stays allowed; the point is the order of magnitude.
+    expect(RUN_HISTORY_POLL_INTERVAL_MS).toBeGreaterThanOrEqual(5_000);
   });
 });

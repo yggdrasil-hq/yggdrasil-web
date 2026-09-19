@@ -2,7 +2,7 @@
 
 import { ErrorMessage } from "@/components/ui/error-message";
 import { formatDistanceToNow } from "date-fns";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { RunRecording } from "@/components/tests/run-recording";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,7 +13,10 @@ import {
 } from "@/components/ui/card";
 import { fetchTestRuns } from "@/lib/api";
 import type { TestRunHistoryEntry } from "@/lib/features/types";
+import { useLiveRelay } from "@/components/features/use-live-relay";
+import { pollIntervalMsForRelay } from "@/lib/features/live-relay";
 import {
+  RUN_HISTORY_POLL_INTERVAL_MS,
   emptyHistoryMessage,
   formatDuration,
   hasRunDetail,
@@ -52,6 +55,28 @@ const MAX_VISIBLE_RUNS = 25;
  * deep link would use, but the surrounding IA (ADR 017's
  * `design/projects/detail/tests/detail`) has exactly one route per test, and
  * adding a nested one would drift from the wireframe for no navigational gain.
+ *
+ * **Issue #100 added the live relay, and this surface was in the same state the
+ * Testing tab was in before issue #25 converted it: it fetched once on mount and
+ * nothing ever refreshed it.** A run that a schedule dispatched, or that a user
+ * started from the button above, appeared only on a manual reload — so the page
+ * that exists to answer "what has this test been doing?" could not show a run
+ * starting, and its progress, and its result, without being reloaded. It now
+ * subscribes to the `test` scope and re-reads on signal (a burst coalesces into one
+ * request), with `RUN_HISTORY_POLL_INTERVAL_MS` as the fallback while the relay is
+ * not live.
+ *
+ * **Why the `test` scope rather than the feature's.** A feature-driven `test_run`
+ * reaches both topics (the API fans out per scope), but this page knows only the
+ * test: it was reached by `/tests/:testId`, it has no feature id, and subscribing to
+ * a feature would be a subscription to a resource this page never read. The scope it
+ * holds is the one whose REST read it mirrors — `GET .../tests/:testId/runs` — which
+ * is also what the socket's authoriser checks (ADR 019 item 7).
+ *
+ * ADR 019 item 7 shapes the conversion: a frame carries a *signal*, never state, so
+ * `fetchTestRuns` remains the only thing that puts a value on screen and a frame
+ * cannot disagree with the API. An unread run is therefore never invented — the list
+ * re-reads and shows whatever the API says.
  */
 export function TestRunHistory({
   projectId,
@@ -63,24 +88,89 @@ export function TestRunHistory({
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
 
+  /*
+   * A ref rather than an effect-local flag, because a re-read now arrives from three
+   * places — the mount, the interval and a relay frame — and only a ref guards all
+   * of them. The `active` flag this replaced was correct for the single mount read it
+   * belonged to and is exactly what a second caller would have got wrong.
+   */
+  const mountedRef = useRef(true);
   useEffect(() => {
-    let active = true;
-    setError(null);
-    fetchTestRuns(projectId, testId)
-      .then((data) => {
-        if (active) setRuns(data.runs);
-      })
-      .catch((loadError) => {
-        if (active) {
-          setError(
-            loadError instanceof Error ? loadError.message : "Unable to load run history.",
-          );
-        }
-      });
+    mountedRef.current = true;
     return () => {
-      active = false;
+      mountedRef.current = false;
     };
+  }, []);
+
+  const poll = useCallback(async () => {
+    try {
+      const data = await fetchTestRuns(projectId, testId);
+      if (!mountedRef.current) return;
+      setRuns(data.runs);
+      setError(null);
+    } catch (loadError) {
+      if (!mountedRef.current) return;
+      setError(
+        loadError instanceof Error ? loadError.message : "Unable to load run history.",
+      );
+    }
+    // `refreshKey` is a dependency even though the body does not read it, and that is
+    // the mechanism rather than an oversight: the parent bumps it after a manual
+    // dispatch, a new `poll` identity re-runs the effect below, and the new run
+    // appears at once. Dropping it here would make the "Run now" button's own refresh
+    // silently stop working.
   }, [projectId, testId, refreshKey]);
+
+  /**
+   * The run history's own socket, which the API routes to `test:<testId>`.
+   *
+   * `onEvent` re-reads rather than applying anything: the frame says "a run changed",
+   * not what it changed to (ADR 019 item 7). `onDelta` is deliberately not passed — a
+   * run's narration is not rendered here, and a handler that ignored it would be
+   * noise pretending to be a feature.
+   */
+  const { isLive } = useLiveRelay({
+    projectId,
+    scope: { kind: "test", id: testId },
+    onEvent: () => void poll(),
+  });
+
+  /*
+   * Two effects, split by what each is *scoped to* rather than by what it calls — the
+   * shape issue #98 settled for every relay surface, and `src/features/relay-surfaces.test.ts`
+   * is what keeps it from drifting.
+   *
+   * The first is identity-scoped and clears the list and the error, so switching tests
+   * shows the new test rather than the previous one's runs and stale failure. The
+   * dependency list is the identity and nothing else, and that is deliberate — it must
+   * not include `refreshKey`: `TestDetailClient` bumps that after every manual dispatch,
+   * so clearing here would blank the history on the very click that asked for a refresh,
+   * and an `isLive` change would blank it again every time the socket connected or
+   * dropped. A visible regression caused purely by the relay's health is the coupling
+   * ADR 019 item 7 exists to prevent.
+   *
+   * The second is keyed on `[poll, isLive]` and **reads immediately as well as on its
+   * interval**, so a relay connect is a catch-up and not only a change of period. That
+   * read is not a duplicate of the mount read: the server registers this subscription
+   * only once the `subscribe` frame has been authorised, and the hub keeps no backlog
+   * (`api/src/live/hub.ts` fans out to whoever is subscribed at that instant), so
+   * events published between the mount read and that registration reach nobody.
+   * Deferring the read to the interval would hold that window open for up to
+   * `LIVE_SAFETY_POLL_INTERVAL_MS`.
+   */
+  useEffect(() => {
+    setRuns(null);
+    setError(null);
+  }, [projectId, testId]);
+
+  useEffect(() => {
+    void poll();
+    const interval = setInterval(
+      () => void poll(),
+      pollIntervalMsForRelay({ isLive, fallbackMs: RUN_HISTORY_POLL_INTERVAL_MS }),
+    );
+    return () => clearInterval(interval);
+  }, [poll, isLive]);
 
   const summary = summarizeHistory(runs ?? []);
   const summaryLine = historySummaryLine(summary);

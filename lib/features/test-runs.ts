@@ -15,6 +15,24 @@ import {
  * component that renders these is left with nothing but markup.
  */
 
+/**
+ * How often a Test entity's run history re-reads its runs.
+ *
+ * Issue #100 gave this surface the live relay, and — exactly like issue #25's Testing
+ * tab, whose constant carries the same note — it had **no interval to widen**: it
+ * fetched once on mount and nothing ever refreshed it, so a scheduled or manual run
+ * appeared only when the user reloaded the page. So this is new behaviour rather than
+ * a widened poll: with the relay not live the history now updates on this interval
+ * instead of never.
+ *
+ * The value matches `TESTING_POLL_INTERVAL_MS` because the data is the same shape — a
+ * test run reports a series of steps over minutes, not a token stream — and it is
+ * deliberately above `GRILL_POLL_INTERVAL_MS`: 2s buys nothing here that 5s does not,
+ * and the relay covers the case that matters (a run landing while the user is looking
+ * at the page).
+ */
+export const RUN_HISTORY_POLL_INTERVAL_MS = 5000;
+
 export interface RunCounts {
   passed: number;
   failed: number;
