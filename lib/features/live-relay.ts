@@ -78,9 +78,9 @@ export const LIVE_APP_CLOSE_UNAUTHORIZED = 4401;
 export const LIVE_APP_CLOSE_PROTOCOL = 4400;
 
 /**
- * `"live"` means connected *and* subscribed to this feature — the only state in
- * which the page can trust instant updates. `"off"` covers both "never started"
- * and "gave up", because the page treats them identically: poll normally.
+ * `"live"` means connected *and* subscribed to this socket's scope — the only
+ * state in which the page can trust instant updates. `"off"` covers both "never
+ * started" and "gave up", because the page treats them identically: poll normally.
  */
 export type LiveRelayStatus = "off" | "connecting" | "live";
 
@@ -163,6 +163,30 @@ export function jobEventFromFrame(frame: LiveFrame): FeatureEvent | null {
 }
 
 /**
+ * The event a `design_session_event` frame carries, or null (issue #25).
+ *
+ * **Deliberately a separate reader rather than a generalisation of
+ * `jobEventFromFrame`.** The two frames differ in exactly one way that matters —
+ * the scope field is `sessionId` where the feature frame's is `featureId` — and a
+ * shared helper taking "either one" would be the confusion the distinct frame type
+ * exists to prevent: a caller could stop asking which frame it holds, and a session
+ * id would silently flow into something expecting a feature id. Two readers mean a
+ * reader of either hook sees exactly one protocol.
+ *
+ * The `sessionId` on the frame is not checked against the subscribed session: the
+ * socket is subscribed to one topic per hook instance, and the feature path takes
+ * the same approach. `lib/features/live-relay.test.ts` asserts the two readers do
+ * not accept each other's frames, which is the property that actually needs
+ * guarding.
+ */
+export function designSessionEventFromFrame(frame: LiveFrame): FeatureEvent | null {
+  if (frame.type !== "design_session_event") return null;
+  const event = frame.event;
+  if (typeof event !== "object" || event === null) return null;
+  return event as FeatureEvent;
+}
+
+/**
  * The frame carrying one streaming chunk of assistant text (ADR 019 item 13).
  * Reserved in the protocol from the start; the client ignores unknown frames, so
  * a server that predates it simply never sends one.
@@ -184,9 +208,51 @@ export function deltaTextFromFrame(frame: LiveFrame): string | null {
 
 export interface LiveRelayDeps {
   url: string;
-  projectId: string;
-  featureId: string;
-  /** A `job_event` arrived for this feature. */
+  /**
+   * The frame that subscribes this socket, built by the caller, sent verbatim on
+   * open.
+   *
+   * **Why the caller builds it rather than the relay.** There are two subscribe
+   * frames now — `subscribe` for a feature (ADR 019) and `subscribe_design` for a
+   * design session (issue #25) — and the relay should not know either of them. It
+   * owns one socket's lifecycle and nothing else; leaving the protocol to each
+   * hook means this file cannot conflate the two scopes, because it never sees
+   * one. A `kind` discriminant checked here would be the same information held in
+   * a worse place: one branch away from being mixed up, in the file both scopes
+   * share.
+   *
+   * A plain value rather than a callback because it does not vary over a
+   * connection's life — a reconnect sends the same frame.
+   */
+  subscribeFrame: Record<string, unknown>;
+  /**
+   * Whether a frame confirms **this** subscription, so the relay knows when the
+   * socket may be trusted as live.
+   *
+   * Scoped per-caller for the same reason as `subscribeFrame`: `subscribed` and
+   * `subscribed_design` are different names for different topics, and accepting
+   * either here would report a feature socket as live on a design confirmation.
+   * Callers also check the echoed id, so a confirmation for something else cannot
+   * mark this one live.
+   */
+  isSubscribed: (frame: LiveFrame) => boolean;
+  /**
+   * Whether a frame carries an event for this scope, and so means "re-read".
+   *
+   * Scoped for the same reason as the two above, and this one is load-bearing
+   * rather than tidy: the feature reader keys on `job_event` and the design reader
+   * on `design_session_event`, so a relay that hardcoded either would receive
+   * frames it could not recognise and **never signal a re-read** — the page would
+   * look subscribed, sit on the slow safety interval, and appear to work while
+   * every update arrived 30s late. That failure is invisible except by timing it,
+   * which is why it is a parameter rather than a branch.
+   *
+   * The event's *value* is deliberately unused: ADR 019 item 7 makes the socket a
+   * change signal and the REST read the only state path, so this answers "re-read"
+   * and nothing else.
+   */
+  isEventFrame: (frame: LiveFrame) => boolean;
+  /** A `job_event`/`design_session_event` arrived for whatever this socket subscribed to. */
   onEvent: () => void;
   /**
    * One streaming chunk of assistant text arrived (ADR 019 item 13).
@@ -209,13 +275,21 @@ export interface LiveRelay {
 }
 
 /**
- * Keeps one socket connected and subscribed for one feature.
+ * Keeps one socket connected and subscribed for one scope — a feature or a design
+ * session, depending on the frames the caller supplies.
  *
  * Every branch here is about *not breaking the page*: a socket that fails to
  * connect, fails mid-run, is refused, or misbehaves in any way must leave the
  * caller polling, and the caller must be able to tell the difference so it can
  * pick the poll interval. `stop()` is safe to call twice and is what the React
  * effect's cleanup uses.
+ *
+ * **Teardown closes the socket without an `unsubscribe` frame**, for both scopes.
+ * The server removes the connection — and therefore every subscription on it — on
+ * `close` (`api/src/live/socket.ts`), so the frame would be redundant, and a
+ * second teardown path is a second thing to get wrong. The `unsubscribe` /
+ * `unsubscribe_design` frames exist for a client that stays connected while
+ * dropping one subscription, which neither hook does.
  */
 export function createLiveRelay(deps: LiveRelayDeps): LiveRelay {
   const socketFactory = deps.socketFactory ?? ((url: string) => new WebSocket(url) as LiveSocket);
@@ -289,7 +363,7 @@ export function createLiveRelay(deps: LiveRelayDeps): LiveRelay {
       // starts its backoff over rather than inheriting an old failure count.
       attempt = 0;
       try {
-        opened.send(JSON.stringify({ type: "subscribe", projectId: deps.projectId, featureId: deps.featureId }));
+        opened.send(JSON.stringify(deps.subscribeFrame));
       } catch {
         // The close handler will pick this up and retry.
       }
@@ -300,11 +374,11 @@ export function createLiveRelay(deps: LiveRelayDeps): LiveRelay {
       const frame = parseLiveFrame(event.data);
       if (!frame) return;
 
-      if (frame.type === "subscribed") {
-        // "live" only once the server has confirmed this feature, never on
-        // open alone: an open socket that has not been accepted for the feature
-        // receives nothing, so treating it as live would strand the page on the
-        // slow safety poll with no fast fallback.
+      if (deps.isSubscribed(frame)) {
+        // "live" only once the server has confirmed this subscription, never on
+        // open alone: an open socket that has not been accepted receives nothing,
+        // so treating it as live would strand the page on the slow safety poll
+        // with no fast fallback.
         setStatus("live");
         return;
       }
@@ -324,7 +398,7 @@ export function createLiveRelay(deps: LiveRelayDeps): LiveRelay {
         return;
       }
 
-      if (jobEventFromFrame(frame)) deps.onEvent();
+      if (deps.isEventFrame(frame)) deps.onEvent();
     };
 
     // Reconnect from close only: real sockets fire `error` immediately before

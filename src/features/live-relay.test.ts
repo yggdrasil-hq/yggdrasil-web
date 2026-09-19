@@ -15,11 +15,29 @@ import {
   parseLiveFrame,
   pollIntervalMsForRelay,
   reconnectDelayMs,
+  type LiveFrame,
   type LiveSocket,
 } from "@/lib/features/live-relay";
 
 const PROJECT_ID = "22222222-2222-4222-8222-222222222222";
 const FEATURE_ID = "33333333-3333-4333-8333-333333333333";
+
+/**
+ * The feature protocol, in one place.
+ *
+ * The relay no longer knows either scope (issue #25), so every caller supplies
+ * its own frames. Spelling it once here keeps the three call sites about the
+ * behaviour they actually test. `design-frames.test.ts` covers the design
+ * counterpart and asserts the two readers do not accept each other's frames.
+ */
+function featureProtocol() {
+  return {
+    subscribeFrame: { type: "subscribe", projectId: PROJECT_ID, featureId: FEATURE_ID },
+    isSubscribed: (frame: LiveFrame) =>
+      frame.type === "subscribed" && frame.featureId === FEATURE_ID,
+    isEventFrame: (frame: LiveFrame) => jobEventFromFrame(frame) !== null,
+  };
+}
 
 function makeSocket() {
   const sent: string[] = [];
@@ -73,8 +91,7 @@ function buildRelay(options: { maxAttempts?: number } = {}) {
 
   const relay = createLiveRelay({
     url: "ws://api.test/api/ws",
-    projectId: PROJECT_ID,
-    featureId: FEATURE_ID,
+    ...featureProtocol(),
     onEvent,
     onDelta,
     onStatusChange: (status) => statuses.push(status),
@@ -332,8 +349,7 @@ describe("createLiveRelay: deltas", () => {
     const socket = makeSocket();
     const relay = createLiveRelay({
       url: "ws://api.test/api/ws",
-      projectId: PROJECT_ID,
-      featureId: FEATURE_ID,
+      ...featureProtocol(),
       onEvent: vi.fn(),
       socketFactory: () => socket,
       schedule: () => 0,
@@ -404,7 +420,7 @@ describe("createLiveRelay", () => {
   it("reconnects with backoff after an ordinary close", () => {
     const { relay, socket, scheduler, statuses } = buildRelay();
     socket().onopen?.();
-    socket().onmessage?.({ data: JSON.stringify({ type: "subscribed" }) });
+    socket().onmessage?.({ data: JSON.stringify({ type: "subscribed", featureId: FEATURE_ID }) });
     expect(relay.status()).toBe("live");
 
     socket().onclose?.({ code: 1006 });
@@ -493,8 +509,7 @@ describe("createLiveRelay", () => {
     const scheduler = makeScheduler();
     const relay = createLiveRelay({
       url: "ws://api.test/api/ws",
-      projectId: PROJECT_ID,
-      featureId: FEATURE_ID,
+      ...featureProtocol(),
       onEvent: vi.fn(),
       socketFactory: () => {
         throw new Error("blocked");
@@ -515,10 +530,10 @@ describe("createLiveRelay", () => {
     scheduler.run(0);
 
     expect(sockets).toHaveLength(2);
-    sockets[0].onmessage?.({ data: JSON.stringify({ type: "subscribed" }) });
+    sockets[0].onmessage?.({ data: JSON.stringify({ type: "subscribed", featureId: FEATURE_ID }) });
     expect(relay.status()).toBe("connecting");
 
-    sockets[1].onmessage?.({ data: JSON.stringify({ type: "subscribed" }) });
+    sockets[1].onmessage?.({ data: JSON.stringify({ type: "subscribed", featureId: FEATURE_ID }) });
     expect(relay.status()).toBe("live");
   });
 
@@ -535,7 +550,7 @@ describe("createLiveRelay", () => {
   it("stops cleanly: closes the socket, cancels the retry, and is idempotent", () => {
     const { relay, socket, scheduler, onEvent } = buildRelay();
     socket().onopen?.();
-    socket().onmessage?.({ data: JSON.stringify({ type: "subscribed" }) });
+    socket().onmessage?.({ data: JSON.stringify({ type: "subscribed", featureId: FEATURE_ID }) });
     socket().onclose?.({ code: 1006 });
     expect(scheduler.pendingDelays()).toHaveLength(1);
 

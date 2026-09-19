@@ -5,6 +5,7 @@ import { apiBaseUrl } from "@/lib/config";
 import {
   createLiveRelay,
   createRefreshCoalescer,
+  jobEventFromFrame,
   liveSocketUrl,
   type LiveRelayStatus,
 } from "@/lib/features/live-relay";
@@ -81,8 +82,16 @@ export function useLiveFeatureRelay(input: {
     });
     const relay = createLiveRelay({
       url,
-      projectId,
-      featureId,
+      /*
+       * The feature protocol, named here rather than inside the relay so the
+       * relay never has to know which scope it is serving — see the note on
+       * `LiveRelayDeps.subscribeFrame`. The id is also checked on the
+       * confirmation, so a `subscribed` for another feature cannot mark this
+       * socket live.
+       */
+      subscribeFrame: { type: "subscribe", projectId, featureId },
+      isSubscribed: (frame) => frame.type === "subscribed" && frame.featureId === featureId,
+      isEventFrame: (frame) => jobEventFromFrame(frame) !== null,
       onEvent: () => refresh.trigger(),
       onDelta: (text) => onDeltaRef.current?.(text),
       onStatusChange: setStatus,

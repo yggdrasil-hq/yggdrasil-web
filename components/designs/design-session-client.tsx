@@ -2,7 +2,7 @@
 
 import { ErrorMessage } from "@/components/ui/error-message";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "@/components/app-shell/app-shell";
 import { Markdown } from "@/components/markdown";
 import { Button } from "@/components/ui/button";
@@ -14,11 +14,15 @@ import {
   sendDesignMessage,
 } from "@/lib/api";
 import { appRoute } from "@/lib/config";
-import { getLatestDesignSnapshot, isDesignReplyPending } from "@/lib/features/design";
+import {
+  DESIGN_POLL_INTERVAL_MS,
+  getLatestDesignSnapshot,
+  isDesignReplyPending,
+} from "@/lib/features/design";
+import { pollIntervalMsForRelay } from "@/lib/features/live-relay";
 import type { DesignSession, FeatureEvent, Project } from "@/lib/features/types";
 import { LoadFailure } from "@/components/ui/load-failure";
-
-const POLL_INTERVAL_MS = 2000;
+import { useLiveDesignRelay } from "@/components/designs/use-live-design-relay";
 
 export function DesignSessionClient({
   projectId,
@@ -36,32 +40,70 @@ export function DesignSessionClient({
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  /*
+   * A ref rather than the old effect-local `active` flag: `poll` is now shared by
+   * two effects and by the relay's callback, so "is this component still mounted"
+   * has to be readable from all of them. Without it a poll that resolves after
+   * unmount sets state on a dead component.
+   */
+  const mountedRef = useRef(true);
   useEffect(() => {
-    let active = true;
-    async function poll() {
-      try {
-        const [projectData, eventData] = await Promise.all([
-          fetchProject(projectId),
-          fetchDesignEvents(projectId, sessionId),
-        ]);
-        if (!active) return;
-        setProject(projectData);
-        setSession(eventData.session);
-        setEvents(eventData.events);
-        setError(null);
-      } catch (pollError) {
-        if (active) {
-          setError(pollError instanceof Error ? pollError.message : "Failed to load design session");
-        }
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  const poll = useCallback(async () => {
+    try {
+      const [projectData, eventData] = await Promise.all([
+        fetchProject(projectId),
+        fetchDesignEvents(projectId, sessionId),
+      ]);
+      if (!mountedRef.current) return;
+      setProject(projectData);
+      setSession(eventData.session);
+      setEvents(eventData.events);
+      setError(null);
+    } catch (pollError) {
+      if (mountedRef.current) {
+        setError(pollError instanceof Error ? pollError.message : "Failed to load design session");
       }
     }
-    void poll();
-    const interval = setInterval(() => void poll(), POLL_INTERVAL_MS);
-    return () => {
-      active = false;
-      clearInterval(interval);
-    };
   }, [projectId, sessionId]);
+
+  /*
+   * Issue #25: the design-session view moves from a 2s poll to the relay. The
+   * frame is a *change signal* and nothing more (ADR 019 item 7) — `poll` above
+   * stays the only state path, so a re-read is exactly what the interval used to
+   * trigger, just at the moment something changed.
+   */
+  const { isLive } = useLiveDesignRelay({
+    projectId,
+    sessionId,
+    onEvent: () => void poll(),
+  });
+
+  /*
+   * Two effects rather than one, matching `TestingPanel`, and the split is
+   * load-bearing there for a reason that applies here too: this one owns the
+   * identity-scoped read, and the next owns only the interval. Combining them
+   * would re-run the immediate read on every `isLive` transition — two or three
+   * extra fetches on mount, from `off` to `connecting` to `live` — which is work
+   * caused purely by the socket's health on a surface that must behave the same
+   * whether or not the relay is available.
+   */
+  useEffect(() => {
+    void poll();
+  }, [poll]);
+
+  useEffect(() => {
+    const interval = setInterval(
+      () => void poll(),
+      pollIntervalMsForRelay({ isLive, fallbackMs: DESIGN_POLL_INTERVAL_MS }),
+    );
+    return () => clearInterval(interval);
+  }, [poll, isLive]);
 
   const snapshot = useMemo(() => {
     return getLatestDesignSnapshot(events);
