@@ -67,6 +67,20 @@ export function BuildProgressPanel({
     };
   }, []);
 
+  /*
+   * `onFeatureChange` is in the deps below rather than excluded with an
+   * `eslint-disable` (which is what this component used to do). It is safe to
+   * depend on: the prop is `FeatureDetailLayout`'s `useState` setter, which is
+   * stable for the life of the provider.
+   *
+   * It is worth naming *why* that matters here, because this component re-renders
+   * on a 1s clock (the elapsed-time ticker below). If `poll`'s identity changed on
+   * each of those renders, the interval effect would tear down and recreate its
+   * timer every second and — with a 2s period — never fire at all. Stable deps
+   * are what keep the interval intact, so a future change that wraps
+   * `onFeatureChange` in an inline arrow would silently stop the panel updating
+   * rather than break it visibly.
+   */
   const poll = useCallback(async () => {
     try {
       const [featureData, eventsData] = await Promise.all([
