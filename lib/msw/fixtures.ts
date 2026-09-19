@@ -253,6 +253,14 @@ export const mockProject: Project = withRepositoryRemovalBlockedReason({
   agenticReviewEnabled: true,
   uploadedExtensionsEnabled: false,
   hasDesignSurface: true,
+  /*
+   * A non-UTC zone on purpose, mirroring the agentic-review fixture's
+   * non-blocking finding: the mock path is where the zone-aware schedule labels
+   * are exercised in development, and leaving this `null` would mean every
+   * label read "UTC" and the new behaviour would never be seen until a real
+   * project set a zone in production (issue #31 part 1).
+   */
+  timeZone: "America/New_York",
   repositories: [
     {
       id: "repo_primary",
@@ -771,6 +779,9 @@ export function createMockProject(input: {
     agenticReviewEnabled: true,
     uploadedExtensionsEnabled: false,
     hasDesignSurface: true,
+    // Null, as the API returns for a project that has never set one — so the
+    // default (UTC) path is exercised too, not only the configured one.
+    timeZone: null,
     repositories: input.repositories.map((repo, index) => ({
       id: `repo_${id}_${index}`,
       githubOwner: repo.githubOwner,
