@@ -50,6 +50,7 @@ import {
 import { ModelSecretField } from "@/components/settings/model-secret-field";
 import { LoadFailure } from "@/components/ui/load-failure";
 import { ProjectNotificationMuteCard } from "@/components/settings/project-notification-mute";
+import { ProjectTimeZoneCard } from "@/components/settings/project-timezone-card";
 import { TRUST_WARNING_SHORT, projectLoadState } from "@/lib/features/extensions";
 import { appRoute } from "@/lib/config";
 import { AGENT_JOB_KINDS, AGENT_JOB_KIND_LABELS } from "@/lib/features/types";
@@ -725,6 +726,20 @@ export function ProjectSettingsClient({ projectId }: ProjectSettingsClientProps)
           <ProjectNotificationMuteCard
             projectId={projectId}
             organizationId={project.organizationId}
+          />
+
+          {/*
+           * Issue #31 part 1's write half. Placed here rather than on the tests
+           * page because it is one setting for every schedule in the project,
+           * and the tests page is per-test — a control there would read as
+           * affecting only the test it sits beside.
+           */}
+          <ProjectTimeZoneCard
+            projectId={projectId}
+            timeZone={project.timeZone}
+            onChange={(timeZone) =>
+              setProject((current) => (current ? { ...current, timeZone } : current))
+            }
           />
 
           <Card className="border-dashed">

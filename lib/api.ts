@@ -956,6 +956,31 @@ export async function triggerTestRun(
   return parseJson<{ jobId: string }>(response);
 }
 
+/**
+ * Issue #31 part 1's write half: the IANA zone a project's schedules are read in.
+ *
+ * `null` clears it, which the API treats identically to omitting the field — both
+ * mean "fall back to UTC". The API validates the name (`isValidTimeZone`, also an
+ * `Intl` check) and answers `400 Unknown time zone: <name>` for a bad one; that
+ * message is deliberately not rewritten here, because it names the problem more
+ * precisely than "invalid input" would and the field is free-form at the API.
+ *
+ * Returns the value the server stored, so a caller can set state from the response
+ * rather than assuming its request was taken verbatim.
+ */
+export async function setProjectTimeZone(
+  projectId: string,
+  timeZone: string | null,
+): Promise<{ timeZone: string | null }> {
+  const response = await fetch(apiUrl(`/projects/${projectId}/timezone`), {
+    method: "PUT",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ timeZone }),
+  });
+  return parseJson<{ timeZone: string | null }>(response);
+}
+
 export async function fetchNotifications(): Promise<NotificationsResponse> {
   const response = await fetch(apiUrl("/notifications"), {
     cache: "no-store",
