@@ -1,6 +1,8 @@
 "use client";
 
 import { ErrorMessage } from "@/components/ui/error-message";
+import { Clock } from "lucide-react";
+import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -38,6 +40,13 @@ import {
   countAgentTextEvents,
   shouldDropStreamBuffer,
 } from "@/lib/features/grill-stream";
+import {
+  NO_GRILL_WAIT,
+  describeGrillWait,
+  grillWaitMessage,
+  resolveGrillWaitView,
+  type GrillWaitView,
+} from "@/lib/features/grill-wait";
 import { appRoute } from "@/lib/config";
 import { pollIntervalMsForRelay } from "@/lib/features/live-relay";
 import { useLiveFeatureRelay } from "@/components/features/use-live-feature-relay";
@@ -92,6 +101,25 @@ export function FeatureGrillClient() {
   const [lastError, setLastError] = useState<string | null>(null);
   const [jobKind, setJobKind] = useState<string | null>(null);
   const [restartedFrom, setRestartedFrom] = useState<string | null>(null);
+  /**
+   * Issue #92: how long this grill has been waiting on an unanswered question.
+   *
+   * Held as a *view* rather than as the API's `awaitingReply`, because
+   * `resolveGrillWaitView` has to compare each read against the previous one to
+   * survive the API's two-gates-disagree instant — see that function. The raw
+   * field is an input to the transition, not the state.
+   */
+  const [grillWait, setGrillWait] = useState<GrillWaitView>(NO_GRILL_WAIT);
+  /**
+   * A ticking clock, so the age advances without a network read.
+   *
+   * Started only while there is a wait to show — a grill page can sit open for
+   * hours, and a one-second timer that runs for the whole page's life to update
+   * nothing would be a battery and render cost for no output. Keyed on the
+   * boolean rather than the view object so a new view each poll does not tear the
+   * timer down and recreate it.
+   */
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const [replyDraft, setReplyDraft] = useState("");
   const [sendingReply, setSendingReply] = useState(false);
   /**
@@ -156,6 +184,25 @@ export function FeatureGrillClient() {
       setLastError(eventsData.lastError);
       setJobKind(eventsData.jobKind);
       setRestartedFrom(eventsData.restartedFromEventId);
+      /*
+       * Issue #92. The functional updater is load-bearing rather than stylistic:
+       * the transition needs the previous view to decide whether a null
+       * `awaitingReply` is a fresh wait or the API's two writes disagreeing, and
+       * reading that from the closure would mean putting `grillWait` in the
+       * dependency list — which rebuilds `poll` on every poll that changes it, and
+       * `poll` is a dependency of the interval and of the relay's callback.
+       */
+      setGrillWait((previous) =>
+        resolveGrillWaitView({
+          awaitingReply: eventsData.awaitingReply,
+          // Both halves are read together, and both from this read: the *whether*
+          // comes from the feature (where the API keeps it) and the *when* from the
+          // events, so the two cannot come from different generations of the pair.
+          awaitingUserInput: featureData.awaitingUserInput,
+          jobStatus: eventsData.jobStatus,
+          previous,
+        }),
+      );
       setPolled(true);
     } catch {
       // Transient poll failures are ignored: the next tick retries, and the
@@ -192,6 +239,23 @@ export function FeatureGrillClient() {
     );
     return () => clearInterval(interval);
   }, [poll, isLive]);
+
+  /*
+   * Issue #92: the clock the age is measured against.
+   *
+   * The API sends `since`, not an age, precisely so the client can do this — an
+   * age computed server-side is already stale when it renders and does not move
+   * while you watch it. One second is the resolution: it is what makes a fresh
+   * wait visibly live rather than a number that looks frozen.
+   *
+   * Runs only while there is a wait to render, so a grill page left open for hours
+   * is not costing a render every second to update nothing.
+   */
+  useEffect(() => {
+    if (grillWait.kind === "none") return;
+    const tick = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(tick);
+  }, [grillWait.kind]);
 
   async function handleSendReply() {
     const content = replyDraft.trim();
@@ -312,6 +376,12 @@ export function FeatureGrillClient() {
     awaitingUserInput: feature.awaitingUserInput,
     jobStatus,
   });
+  /*
+   * Issue #92: the wait banner's content, or null when there is nothing to say.
+   * Recomputed on every tick, which is what makes the age live — no new data from
+   * the server is involved.
+   */
+  const grillWaitDescribed = describeGrillWait(grillWait, nowMs);
 
   return (
     <div className="space-y-6">
@@ -429,6 +499,52 @@ export function FeatureGrillClient() {
 
         {stoppedMessage ? (
           <ErrorMessage className="mt-4 text-sm text-red-400">{stoppedMessage}</ErrorMessage>
+        ) : null}
+
+        {/*
+          Issue #92: how long this grill has been waiting on an answer.
+
+          Placed immediately above the reply composer rather than in the
+          transcript, because the two answer the same question — "someone needs to
+          answer this" — and the useful thing about the age is being able to read
+          it at the moment you decide whether to answer now or later. Putting it in
+          the transcript would separate it from the box it is about, and the
+          transcript also scrolls away in a long conversation.
+
+          Rendered from the *view*, not from `feature.awaitingUserInput`: the view
+          is what survives the API's two-writes-disagree instant, so the banner
+          cannot blink off and back. It still disappears in the same poll as the
+          composer, because `resolveGrillWaitView` clears on the flag the composer
+          gates on.
+        */}
+        {grillWaitDescribed && canReplyToGrill({
+          awaitingUserInput: feature.awaitingUserInput,
+          jobStatus,
+        }) ? (
+          <p
+            className={cn(
+              "mt-4 rounded-md border px-3 py-2 text-sm",
+              grillWaitDescribed.overdue
+                ? "border-status-input/40 bg-status-input/10 text-mist"
+                : "border-rime-soft bg-surface-02 text-mist",
+            )}
+            /* `role="status"` so a screen reader hears the age when it appears and
+               when the countdown rolls over, rather than only when focus happens
+               to land on it. Polite, not assertive: this is information, and
+               interrupting whatever the user is doing to announce it would be
+               disruptive for something that is not an error. */
+            role="status"
+          >
+            <Clock className="mr-1.5 -mt-0.5 inline h-3.5 w-3.5" aria-hidden />
+            {/* No "retry" advice here on purpose. When the bound is actually
+                passed the Orchestrator fails the run, and `grillStoppedMessage`
+                already appends its `lastError` verbatim — which names the
+                question and says the feature can be retried. Repeating that here
+                would be two places stating one fact, which is the drift this
+                codebase keeps finding; this banner states only the one fact it
+                owns (how long, and whether that is past the bound). */}
+            {grillWaitMessage(grillWaitDescribed)}
+          </p>
         ) : null}
 
         {actionError ? <ErrorMessage className="mt-2 text-sm text-red-400">{actionError}</ErrorMessage> : null}
